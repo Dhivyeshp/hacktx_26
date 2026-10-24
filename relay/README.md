@@ -6,6 +6,8 @@ One websocket that connects the Raspberry Pi (robot + USB webcam), the Vision Pr
 wss://<host>/ws?room=table&role=<pi|visionpro|hub|ai|dashboard>&token=<RELAY_TOKEN>
 ```
 
+**Deployed:** `wss://centerpiece-relay.onrender.com/ws` (health: `https://centerpiece-relay.onrender.com/healthz`). Get `RELAY_TOKEN` from the Render dashboard → centerpiece-relay → Environment.
+
 - **Text frames** are JSON: `{ "type": "...", ...payload }`. They go to everyone else in the room. Add `"to": "pi"` or `"to": ["pi","hub"]` to target specific roles. The relay adds `from`, `fromId` and `ts`.
 - **Binary frames** are JPEG camera frames, and only the `pi` may send them. They go to clients with video enabled (the default for `visionpro` and `dashboard`; others add `&video=1`). Frames are dropped for a client whose socket falls behind. JSON is never dropped.
 - `{ "type": "ping", "t": 123 }` gets back `{ "type": "pong", "t": 123, "serverTs": ... }`, which is useful for measuring latency.
