@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "chain:build": "cd solana && anchor build && npm run -w @centerpiece/chain sync-idl",
-    "chain:test": "cd solana && anchor test",
+    "chain:test": "solana/scripts/test-local.sh",
     "chain:init": "npm run -w @centerpiece/chain init",
     "chain:smoke": "npm run -w @centerpiece/chain smoke",
     "chain:serve": "npm run -w @centerpiece/chain serve"

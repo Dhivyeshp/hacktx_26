@@ -28,7 +28,7 @@ client/                     @centerpiece/chain: ChainClient (TS) + HTTP service 
 # toolchain: Rust, Agave CLI 4.x, Anchor 1.1.2 (avm)
 npm install                       # repo root
 npm run chain:build               # anchor build + copy IDL/types into client/src/idl
-npm run chain:test                # local validator + full test suite
+npm run chain:test                # solana-test-validator + full test suite (8 tests)
 
 solana config set --url devnet
 solana address                    # fund this at https://faucet.solana.com (deploying needs ~4 SOL)
