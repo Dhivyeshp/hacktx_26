@@ -1,0 +1,18 @@
+# Render Blueprint: New > Blueprint in the Render dashboard, pick this repo.
+services:
+  - type: web
+    name: centerpiece-relay
+    runtime: node
+    rootDir: relay
+    # Free instances sleep after 15 min with no traffic and take ~1 min to wake.
+    # Switch to "starter" before demo night so the socket is always up.
+    plan: free
+    region: ohio
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: RELAY_TOKEN
+        generateValue: true

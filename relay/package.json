@@ -1,0 +1,23 @@
+{
+  "name": "@centerpiece/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Websocket relay between the Pi (robot + webcam), the Vision Pro app, and the game hub",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/main.ts",
+    "dev": "node --experimental-strip-types --watch src/main.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "fake-pi": "node --experimental-strip-types scripts/fake-pi.ts"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1"
+  }
+}
