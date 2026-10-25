@@ -53,6 +53,8 @@ RELAY_TOKEN='<your relay token>' RELAY_ROOM=table \
 
 Use `--duration 30` for a bounded connection check. Successful connection alone
 does not prove hand tracking; look for `WOULD SEND TO ROBOT` lines while gesturing.
+See the [movement controls guide](../apple-vision/docs/movement-controls.md) for
+the full headset, Pi and listener setup, gesture mapping and serial payloads.
 The listener shows movement changes immediately and summarizes repeated messages
 once per second during traffic. Zero-speed drive and explicit stop are displayed
 as one logical stop. Add `--verbose` to print every raw command, including held

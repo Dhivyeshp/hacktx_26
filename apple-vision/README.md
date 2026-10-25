@@ -46,6 +46,9 @@ If live video stalls for three seconds, the last frame dims, the UI reports the 
 
 ## ARKit hand motions
 
+For setup, gestures, listener commands and troubleshooting, see the
+[movement controls guide](docs/movement-controls.md).
+
 In the immersive driving view, select **Enable hand driving** and allow hand tracking. Use **loose fists in free space**; no puck or gaze target is required for driving. Keep both hands in the headset's tracking view, including the open hand when turning.
 
 | Gesture | Direction | Left wheel | Right wheel |
