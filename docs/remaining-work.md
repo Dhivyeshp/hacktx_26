@@ -6,12 +6,15 @@ Updated October 25, 2026. This separates working browser features from integrati
 
 - [x] Room onboarding, Instagram import for configured eligible test accounts, manual interests and saved/edit states.
 - [x] Mobile layouts, light and dark appearance, profile reset and an explanation of imported text.
+- [x] Optional voice/text introduction with browser dictation, editable transcript and approved-interest review.
 - [x] Muse generation with grounding checks, bounded requests, a persistent usage cap and labeled fallback prompts.
 - [x] Private GM feed with suggestion history, player names, interest readiness and recorded turns.
 - [x] `/prompt` shows the selected question; old `/relic` and `/c` links redirect there. Bounty text is filtered by player identity.
 - [x] Stable public testing domain at `https://destina.ngrok.app`.
 
 ## Next for a complete game test
+
+- [ ] Test voice introductions on real iOS and Android phones, including microphone denial, noisy rooms and keyboard dictation fallback.
 
 - [ ] Configure the server's `GM_API_KEY` and provision it securely to the trusted Vision Pro adapter. The room-scoped browser access link only grants read access.
 - [ ] Connect the web app to the existing relay at `wss://centerpiece-relay.onrender.com/ws`. The relay exists; the Destina adapter is still missing.

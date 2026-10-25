@@ -33,6 +33,7 @@ export function createApp(db = openDb()) {
   db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
   const app = express();
   const generating = new Set<string>();
+  const analyzingProfiles = new Set<string>();
   app.set("trust proxy", 1);
   app.get(["/relic", "/c"], (req, res) => {
     const query = req.originalUrl.includes("?")
@@ -142,12 +143,22 @@ export function createApp(db = openDb()) {
     const current = getSession(db, s.id)!;
     active(current);
     current.sources[me] = [
-      ...(current.sources[me] || []).filter((x) => x.kind === "manual"),
+      ...(current.sources[me] || []).filter(
+        (x) => x.kind === "manual" || x.kind === "intro",
+      ),
       ...sources,
     ];
     const p = current.players.find((p) => p.id === me)!;
     p.interests = [
-      ...p.interests.filter((i) => i.approved),
+      ...p.interests.filter(
+        (i) =>
+          i.approved ||
+          i.sourceIds.some((id) =>
+            (current.sources[me] || []).some(
+              (source) => source.id === id && source.kind === "intro",
+            ),
+          ),
+      ),
       ...result.interests,
     ];
     current.recommendations = [];
@@ -278,7 +289,94 @@ export function createApp(db = openDb()) {
       res.json(snapshot(db, current, me));
     }),
   );
-  const analyzingProfiles = new Set<string>();
+  app.post(
+    "/api/profile/intro",
+    wrap(async (req, res) => {
+      const { s, me } = auth(req);
+      active(s);
+      const { text: introText } = z
+        .object({ text: z.string().trim().min(10).max(1200) })
+        .parse(req.body);
+      const revision = s.profileRevisions?.[me] || 0;
+      const previous = s.sources[me] || [];
+      const lastIntro = previous
+        .filter((source) => source.kind === "intro")
+        .at(-1);
+      if (lastIntro?.text === introText) return res.json(snapshot(db, s, me));
+      if (analyzingProfiles.has(me))
+        return res
+          .status(409)
+          .json({ error: "Your profile is already being analyzed." });
+      const before = JSON.stringify({
+        sources: previous,
+        interests: s.players.find((p) => p.id === me)!.interests,
+      });
+      analyzingProfiles.add(me);
+      try {
+        const source: Source = {
+          id: randomUUID(),
+          kind: "intro",
+          text: introText,
+        };
+        const result = await extract([source]);
+        const current = getSession(db, s.id)!;
+        active(current);
+        const player = current.players.find((p) => p.id === me);
+        if (
+          !player ||
+          (current.profileRevisions?.[me] || 0) !== revision ||
+          JSON.stringify({
+            sources: current.sources[me] || [],
+            interests: player.interests,
+          }) !== before
+        )
+          return res
+            .status(409)
+            .json({
+              error:
+                "Your profile changed while we were finding interests. Review it before trying again.",
+            });
+        const oldIntroIds = new Set(
+          previous
+            .filter((source) => source.kind === "intro")
+            .map((source) => source.id),
+        );
+        const kept = player.interests.filter(
+          (i) => i.approved || !i.sourceIds.some((id) => oldIntroIds.has(id)),
+        );
+        const usedSources = new Set(kept.flatMap((i) => i.sourceIds));
+        current.sources[me] = [
+          ...previous.filter(
+            (source) => source.kind !== "intro" || usedSources.has(source.id),
+          ),
+          source,
+        ];
+        const labels = new Set(kept.map((i) => i.label.toLowerCase()));
+        player.interests = [
+          ...kept,
+          ...result.interests.filter((i) => {
+            const label = i.label.toLowerCase();
+            if (labels.has(label)) return false;
+            labels.add(label);
+            return true;
+          }),
+        ];
+        current.recommendations = [];
+        notice(
+          current,
+          me,
+          result.notice ||
+            (result.interests.length
+              ? "Review the interests suggested from your introduction."
+              : "Your introduction is saved. Add any interests you’d like to share."),
+        );
+        touch(current, "profile.intro");
+        res.json(snapshot(db, current, me));
+      } finally {
+        analyzingProfiles.delete(me);
+      }
+    }),
+  );
   app.post(
     "/api/profile/analyze",
     wrap(async (req, res) => {
@@ -337,6 +435,8 @@ export function createApp(db = openDb()) {
       db.prepare("DELETE FROM connections WHERE player_id=?").run(me);
       db.prepare("DELETE FROM oauth WHERE player_id=?").run(me);
       delete s.sources[me];
+      s.profileRevisions ??= {};
+      s.profileRevisions[me] = (s.profileRevisions[me] || 0) + 1;
       s.players.find((p) => p.id === me)!.interests = [];
       s.recommendations = [];
       notice(s, me, undefined);
@@ -468,12 +568,10 @@ export function createApp(db = openDb()) {
         { session_id: string } | undefined;
       const s = record && getSession(db, record.session_id);
       if (!s)
-        return res
-          .status(401)
-          .json({
-            error:
-              "This access link expired or was already used. Request a new link.",
-          });
+        return res.status(401).json({
+          error:
+            "This access link expired or was already used. Request a new link.",
+        });
       allowQuestions(res, s.id);
       res.json(questionsSnapshot(s, generating.has(s.id)));
     }),
@@ -492,19 +590,15 @@ export function createApp(db = openDb()) {
           Buffer.from(tokenHash(expected), "hex"),
         )
       )
-        return res
-          .status(403)
-          .json({
-            error:
-              "The room code or access key could not be verified. You can also use a private access link.",
-          });
+        return res.status(403).json({
+          error:
+            "The room code or access key could not be verified. You can also use a private access link.",
+        });
       const s = getSession(db, code.toUpperCase());
       if (!s)
-        return res
-          .status(403)
-          .json({
-            error: "The room code or access key could not be verified.",
-          });
+        return res.status(403).json({
+          error: "The room code or access key could not be verified.",
+        });
       allowQuestions(res, s.id);
       res.json(questionsSnapshot(s, generating.has(s.id)));
     }),
@@ -514,12 +608,10 @@ export function createApp(db = openDb()) {
     wrap((req, res) => {
       const s = questionsRoom(req);
       if (req.query.room && String(req.query.room).toUpperCase() !== s.code)
-        return res
-          .status(403)
-          .json({
-            error:
-              "Your access is for another room. Open its private link or sign in again.",
-          });
+        return res.status(403).json({
+          error:
+            "Your access is for another room. Open its private link or sign in again.",
+        });
       res.json(questionsSnapshot(s, generating.has(s.id)));
     }),
   );

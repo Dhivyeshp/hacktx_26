@@ -22,6 +22,7 @@ import type {
 } from "../shared/types";
 import "./style.css";
 import { Questions } from "./questions";
+import { VoiceIntro } from "./voice-intro";
 import { interestLabel, importSummary } from "./profile-copy";
 import { interestSelectionChanged } from "./profile-state";
 async function api(path: string, body?: unknown, method?: string) {
@@ -375,6 +376,8 @@ function Profile({
   readOnly?: boolean;
 }) {
   const approved = s.me.interests.filter((i) => i.approved);
+  const [introReset, setIntroReset] = useState(0);
+  const interestHeading = useRef<HTMLHeadingElement>(null);
   const [selected, setSelected] = useState(s.me.interests.map((i) => i.id)),
     [manual, setManual] = useState(""),
     [editing, setEditing] = useState(
@@ -441,104 +444,141 @@ function Profile({
         </div>
       )}
       <div className="profile-grid">
-        <section className="panel source-panel">
-          <h2>Your Instagram.</h2>
-          <p className="source-intro">
-            Meta AI suggests interests from your bio and captions.
-          </p>
-          {!readOnly && !s.connected && (
-            <a
-              className="secondary full instagram"
-              href="/api/instagram/connect"
-            >
-              <Instagram size={18} />
-              {s.connected ? "Reconnect Instagram" : "Connect Instagram"}
-              <ArrowUpRight size={16} />
-            </a>
+        <div className="profile-inputs">
+          {!readOnly && (
+            <VoiceIntro
+              key={introReset}
+              savedText={
+                s.sources.filter((source) => source.kind === "intro").at(-1)
+                  ?.text || ""
+              }
+              busy={!!busy}
+              hasInterests={approved.length > 0}
+              onSave={async (text) => {
+                const saved = await run("intro", "/profile/intro", { text });
+                if (saved)
+                  requestAnimationFrame(() => {
+                    interestHeading.current?.focus();
+                    interestHeading.current?.scrollIntoView({ block: "start" });
+                  });
+                return saved;
+              }}
+            />
           )}
-          <div className="integration-status">
-            <span className={s.connected ? "dot" : "dot dim"} />
-            {s.connected
-              ? "Connected"
-              : s.instagramReady
-                ? "Ready to connect"
-                : "You can add interests without connecting"}
-          </div>
-          {s.sources.some((source) => source.kind !== "manual") && (
-            <div className="notice import-summary">
-              <p>{importSummary(s.sources)}</p>
-            </div>
-          )}
-          {s.sources.some((source) => source.kind !== "manual") && (
-            <p className="imported-text-note">
-              Imported text means your bio and post captions.
+          <section className="panel source-panel">
+            <h2>Your Instagram.</h2>
+            <p className="source-intro">
+              Meta AI suggests interests from your bio and captions.
             </p>
-          )}
-          {s.sources.some((source) => source.kind !== "manual") && (
-            <details className="imported-profile-text">
-              <summary>
-                <FileText size={14} />
-                View imported text
-                <span>
-                  {
-                    s.sources.filter((source) => source.kind !== "manual")
-                      .length
-                  }
-                </span>
-              </summary>
-              <p>
-                This is the text Instagram shared from your bio and recent post
-                captions. We use it to suggest interests. Only the interests you
-                save are used for prompts.
-              </p>
-              {s.sources
-                .filter((source) => source.kind !== "manual")
-                .map((source) => (
-                  <blockquote key={source.id}>
-                    <span className="eyebrow">
-                      {source.kind === "manual"
-                        ? "YOU ADDED"
-                        : source.kind.toUpperCase()}
-                    </span>
-                    <p>{source.text}</p>
-                  </blockquote>
-                ))}
-            </details>
-          )}
-          <details className="connection-details">
-            <summary>About this connection</summary>
-            {!readOnly && s.connected && (
-              <a className="text-button" href="/api/instagram/connect">
-                Reconnect Instagram
+            {!readOnly && !s.connected && (
+              <a
+                className="secondary full instagram"
+                href="/api/instagram/connect"
+              >
+                <Instagram size={18} />
+                {s.connected ? "Reconnect Instagram" : "Connect Instagram"}
+                <ArrowUpRight size={16} />
               </a>
             )}
-            <p>
-              Business or Creator accounts only. Messages and saved posts are
-              never imported.
-            </p>
-            <p>Your imported text is removed when the room closes.</p>
-            {s.sources.some((source) => source.kind !== "manual") && (
-              <>
-                {!readOnly && (
-                  <button
-                    className="secondary full"
-                    disabled={!!busy}
-                    onClick={() => run("analyze", "/profile/analyze", {})}
-                  >
-                    {busy === "analyze" ? (
-                      <LoaderCircle className="spin" size={16} />
-                    ) : null}
-                    {busy === "analyze"
-                      ? "Finding interests…"
-                      : "Refresh suggestions"}
-                  </button>
-                )}
-              </>
+            <div className="integration-status">
+              <span className={s.connected ? "dot" : "dot dim"} />
+              {s.connected
+                ? "Connected"
+                : s.instagramReady
+                  ? "Ready to connect"
+                  : "You can add interests without connecting"}
+            </div>
+            {s.sources.some(
+              (source) => source.kind !== "manual" && source.kind !== "intro",
+            ) && (
+              <div className="notice import-summary">
+                <p>{importSummary(s.sources)}</p>
+              </div>
             )}
-          </details>
-        </section>
+            {s.sources.some(
+              (source) => source.kind !== "manual" && source.kind !== "intro",
+            ) && (
+              <p className="imported-text-note">
+                Imported text means your bio and post captions.
+              </p>
+            )}
+            {s.sources.some(
+              (source) => source.kind !== "manual" && source.kind !== "intro",
+            ) && (
+              <details className="imported-profile-text">
+                <summary>
+                  <FileText size={14} />
+                  View imported text
+                  <span>
+                    {
+                      s.sources.filter(
+                        (source) =>
+                          source.kind !== "manual" && source.kind !== "intro",
+                      ).length
+                    }
+                  </span>
+                </summary>
+                <p>
+                  This is the text Instagram shared from your bio and recent
+                  post captions. We use it to suggest interests. Only the
+                  interests you save are used for prompts.
+                </p>
+                {s.sources
+                  .filter(
+                    (source) =>
+                      source.kind !== "manual" && source.kind !== "intro",
+                  )
+                  .map((source) => (
+                    <blockquote key={source.id}>
+                      <span className="eyebrow">
+                        {source.kind === "manual"
+                          ? "YOU ADDED"
+                          : source.kind.toUpperCase()}
+                      </span>
+                      <p>{source.text}</p>
+                    </blockquote>
+                  ))}
+              </details>
+            )}
+            <details className="connection-details">
+              <summary>About this connection</summary>
+              {!readOnly && s.connected && (
+                <a className="text-button" href="/api/instagram/connect">
+                  Reconnect Instagram
+                </a>
+              )}
+              <p>
+                Business or Creator accounts only. Messages and saved posts are
+                never imported.
+              </p>
+              <p>Your imported text is removed when the room closes.</p>
+              {s.sources.some(
+                (source) => source.kind !== "manual" && source.kind !== "intro",
+              ) && (
+                <>
+                  {!readOnly && (
+                    <button
+                      className="secondary full"
+                      disabled={!!busy}
+                      onClick={() => run("analyze", "/profile/analyze", {})}
+                    >
+                      {busy === "analyze" ? (
+                        <LoaderCircle className="spin" size={16} />
+                      ) : null}
+                      {busy === "analyze"
+                        ? "Finding interests…"
+                        : "Refresh suggestions"}
+                    </button>
+                  )}
+                </>
+              )}
+            </details>
+          </section>
+        </div>
         <section className="panel interest-panel">
-          <h2>Your interests.</h2>
+          <h2 ref={interestHeading} tabIndex={-1}>
+            Your interests.
+          </h2>
           {!saved && <p>Keep what fits. Add anything missing.</p>}
           {saved || readOnly ? (
             <>
@@ -727,6 +767,7 @@ function Profile({
                   onClick={async () => {
                     if (await run("delete", "/profile", undefined, "DELETE")) {
                       setDeleting(false);
+                      setIntroReset((value) => value + 1);
                       setManual("");
                       setEditing(true);
                       setSavedRecently(false);

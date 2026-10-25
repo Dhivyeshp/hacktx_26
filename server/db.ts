@@ -23,6 +23,7 @@ export type Session = {
   sources: Record<string, Source[]>;
   notice?: string;
   profileNotices?: Record<string, string>;
+  profileRevisions?: Record<string, number>;
 };
 export function openDb(
   path = process.env.DATABASE_PATH || "data/centerpiece.db",

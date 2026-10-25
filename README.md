@@ -229,3 +229,21 @@ permission to select questions. See [the feed interface](docs/questions-feed.md)
 Player navigation contains Profile and Prompt. The profile footer offers Reset profile, which clears the Instagram connection, OAuth attempts, imported text and interests while keeping the player name and room. Previously shared questions stay in room history. Imported text is explained alongside the Instagram connection and can be expanded to review the original bio and captions.
 
 See [remaining work](docs/remaining-work.md) for the integration and deployment checklist.
+
+### Voice and text introductions
+
+The profile’s “In your own words” section accepts a short typed or dictated introduction.
+On supported secure browsers, “Use my voice” starts one browser speech-recognition
+session, limited to 30 seconds. Other browsers show guidance for phone keyboard
+dictation. Users can review and edit up to 1,200 characters before explicitly
+requesting suggested interests. Destina receives text only; browser recognition
+may use the browser vendor’s online service.
+
+`POST /api/profile/intro` uses the joined player cookie, preserves Instagram sources
+and saved interests, and creates unapproved suggestions grounded in an `intro`
+source. It uses the existing bounded Muse pipeline and request allowance. Repeating
+an identical saved intro does not send another model request. A profile reset during
+extraction prevents that request from restoring deleted data. Intro text stays out
+of the GM/player roster and is removed by profile reset or session closure. Device
+microphone permission and speech quality still need verification on actual iOS and
+Android phones. See [voice intro details](docs/voice-intro.md).

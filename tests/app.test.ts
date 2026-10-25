@@ -946,3 +946,226 @@ test("old NFC paths redirect to the canonical prompt page and keep query paramet
     assert.equal(response.headers.get("location"), "/prompt?t=07");
   }
 });
+
+test("intro extraction is private, grounded, unapproved, bounded and deduplicated", async () => {
+  const room = await request(
+    "/control/rooms",
+    { name: "Intro test" },
+    "",
+    true,
+  );
+  const player = await request("/join", {
+    name: "Voice reader",
+    code: room.body.room.code,
+  });
+  await request(
+    "/interests",
+    { labels: ["Hiking"], approvedIds: [] },
+    player.cookie,
+  );
+  const s = getSession(db, room.body.room.id)!;
+  s.sources[player.body.me.id].push({
+    id: "intro-test-bio",
+    kind: "bio",
+    text: "Making pottery",
+  });
+  s.players[0].interests.push({
+    id: "intro-test-pending",
+    label: "Pottery",
+    sourceIds: ["intro-test-bio"],
+    approved: false,
+  });
+  save(db, s);
+  assert.equal(
+    (await request("/profile/intro", { text: "I enjoy photography." })).status,
+    401,
+  );
+  assert.equal(
+    (await request("/profile/intro", { text: "short" }, player.cookie)).status,
+    400,
+  );
+  assert.equal(
+    (await request("/profile/intro", { text: "x".repeat(1201) }, player.cookie))
+      .status,
+    400,
+  );
+  const original = globalThis.fetch;
+  process.env.MODEL_API_KEY = "fake-intro-key";
+  let calls = 0;
+  try {
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(base)) return original(input, init);
+      calls++;
+      const payload = JSON.parse(String(init?.body));
+      assert.match(payload.messages[0].content, /UNTRUSTED DATA/);
+      const sources = JSON.parse(payload.messages[1].content);
+      assert.equal(sources.length, 1);
+      assert.equal(sources[0].kind, "intro");
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                interests: [
+                  { label: "Photography", sourceIds: [sources[0].id] },
+                ],
+              }),
+            },
+          },
+        ],
+      });
+    };
+    const r = await request(
+      "/profile/intro",
+      { text: "I enjoy photography on weekend walks." },
+      player.cookie,
+    );
+    assert.equal(r.status, 200);
+    assert.equal(calls, 1);
+    assert.equal(
+      r.body.me.interests.find((i: any) => i.label === "Photography").approved,
+      false,
+    );
+    assert.equal(
+      r.body.me.interests.find((i: any) => i.label === "Hiking").approved,
+      true,
+    );
+    assert.ok(r.body.me.interests.find((i: any) => i.label === "Pottery"));
+    assert.equal(
+      r.body.sources.filter((source: any) => source.kind === "intro").length,
+      1,
+    );
+    assert.ok(
+      r.body.sources.find((source: any) => source.id === "intro-test-bio"),
+    );
+    assert.equal(
+      (
+        await request(
+          "/profile/intro",
+          { text: "I enjoy photography on weekend walks." },
+          player.cookie,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(calls, 1);
+    const other = await request("/join", {
+      name: "Another reader",
+      code: room.body.room.code,
+    });
+    assert.ok(
+      !JSON.stringify(other.body).includes("photography on weekend walks"),
+    );
+    const gm = await request("/questions/login", {
+      code: room.body.room.code,
+      key: "test-control-credential",
+    });
+    assert.ok(
+      !JSON.stringify(gm.body).includes("photography on weekend walks"),
+    );
+    const reset = await request(
+      "/profile",
+      undefined,
+      player.cookie,
+      false,
+      "DELETE",
+    );
+    assert.deepEqual(reset.body.sources, []);
+    assert.deepEqual(reset.body.me.interests, []);
+  } finally {
+    globalThis.fetch = original;
+    delete process.env.MODEL_API_KEY;
+  }
+});
+
+test("profile reset cancels an in-flight intro and duplicate analysis is rejected", async () => {
+  const room = await request(
+    "/control/rooms",
+    { name: "Intro race test" },
+    "",
+    true,
+  );
+  const player = await request("/join", {
+    name: "Intro tester",
+    code: room.body.room.code,
+  });
+  const original = globalThis.fetch;
+  process.env.MODEL_API_KEY = "fake-intro-key";
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => (entered = resolve));
+  const pending = new Promise<void>((resolve) => (release = resolve));
+  try {
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(base)) return original(input, init);
+      const source = JSON.parse(
+        JSON.parse(String(init?.body)).messages[1].content,
+      )[0];
+      entered();
+      await pending;
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                interests: [{ label: "Hiking", sourceIds: [source.id] }],
+              }),
+            },
+          },
+        ],
+      });
+    };
+    const first = request(
+      "/profile/intro",
+      { text: "I like hiking in the woods." },
+      player.cookie,
+    );
+    await started;
+    assert.equal(
+      (
+        await request(
+          "/profile/intro",
+          { text: "I also like photography." },
+          player.cookie,
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await request("/profile", undefined, player.cookie, false, "DELETE"))
+        .status,
+      200,
+    );
+    release();
+    assert.equal((await first).status, 409);
+    const current = await request("/session", undefined, player.cookie);
+    assert.deepEqual(current.body.sources, []);
+    assert.deepEqual(current.body.me.interests, []);
+  } finally {
+    release();
+    globalThis.fetch = original;
+    delete process.env.MODEL_API_KEY;
+  }
+});
+
+test("intro service failure saves text for review without inventing interests", async () => {
+  const room = await request(
+    "/control/rooms",
+    { name: "Intro fallback test" },
+    "",
+    true,
+  );
+  const player = await request("/join", {
+    name: "Fallback reader",
+    code: room.body.room.code,
+  });
+  const r = await request(
+    "/profile/intro",
+    { text: "I enjoy pottery and hiking." },
+    player.cookie,
+  );
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.me.interests, []);
+  assert.equal(r.body.sources[0].kind, "intro");
+  assert.match(r.body.notice, /unavailable/);
+});

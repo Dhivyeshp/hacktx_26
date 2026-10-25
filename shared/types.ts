@@ -9,7 +9,7 @@ export type InterestSuggestion = {
 export type Source = {
   id: string;
   text: string;
-  kind: "bio" | "caption" | "manual" | "sample";
+  kind: "bio" | "caption" | "manual" | "sample" | "intro";
 };
 export type Player = {
   id: string;
