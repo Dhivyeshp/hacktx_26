@@ -202,7 +202,8 @@ static void ack() {
 
 // {"type":"nfc_read"} or {"type":"nfc_write","url":"https://..."} (or "text").
 // Waits up to timeout_ms (default 3000) for a tag held on the flower pattern
-// (the antenna). The face pauses meanwhile. Replies with one line, e.g.
+// (the antenna). The face pauses meanwhile. An optional "uid" makes the command
+// act only on that tag. Replies with one line, e.g.
 // {"nfc":"nfc_write","ok":true,"uid":"04A2...","tag":"NTAG215","uri":"https://...","verified":true}
 static void handleNfc(JsonDocument& cmd) {
   JsonDocument out;
@@ -215,8 +216,12 @@ static void handleNfc(JsonDocument& cmd) {
   if (writing && !url && !text) {
     err = "nfc_write needs url or text";
   } else if (nfcBegin(err)) {
+    const char* wantUid = cmd["uid"];
     if (!nfcFindTag(tag, cmd["timeout_ms"] | 3000)) {
-      err = "no tag found";
+      err = nfcSawMultipleTags() ? "more than one tag in range, hold just one" : "no tag found";
+    } else if (wantUid && !tag.uidHex().equalsIgnoreCase(wantUid)) {
+      out["uid"] = tag.uidHex();
+      err = "wrong tag in range";
     } else {
       out["uid"] = tag.uidHex();
       out["tag"] = tag.kind;
