@@ -12,7 +12,6 @@ import {
   LockKeyhole,
   RefreshCw,
   Shield,
-  Upload,
   Users,
   X,
 } from "lucide-react";
@@ -322,16 +321,16 @@ function App() {
                 className={view === "profile" ? "selected" : ""}
                 onClick={() => setView("profile")}
               >
-                Your profile
+                Profile
               </button>
               <button
                 className={view === "ready" ? "selected" : ""}
                 onClick={() => setView("ready")}
               >
-                Your place
+                At the table
               </button>
               <a className={view === "capsule" ? "selected" : ""} href="/c">
-                Your relic
+                Relic
               </a>
               <span className="player-name">
                 {s.me.name}
@@ -449,21 +448,43 @@ function Profile({
   onReady: () => void;
   readOnly?: boolean;
 }) {
+  const approved = s.me.interests.filter((i) => i.approved);
   const [selected, setSelected] = useState(s.me.interests.map((i) => i.id)),
     [manual, setManual] = useState(""),
-    [text, setText] = useState(""),
-    [fileError, setFileError] = useState(""),
+    [editing, setEditing] = useState(
+      !approved.length || s.me.interests.some((i) => !i.approved),
+    ),
+    [savedRecently, setSavedRecently] = useState(false),
     [deleting, setDeleting] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setSelected(s.me.interests.map((i) => i.id));
+    setEditing(
+      !s.me.interests.some((i) => i.approved) ||
+        s.me.interests.some((i) => !i.approved),
+    );
+    setManual("");
   }, [JSON.stringify(s.me.interests)]);
-  const total =
-    selected.length +
-    manual
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean).length;
+  const labels = manual
+    .split(",")
+    .map((label) => label.trim())
+    .filter(Boolean);
+  const total = new Set([
+    ...s.me.interests
+      .filter((i) => selected.includes(i.id))
+      .map((i) => i.label.toLowerCase()),
+    ...labels.map((label) => label.toLowerCase()),
+  ]).size;
+  const dirty =
+    labels.length > 0 ||
+    JSON.stringify([...selected].sort()) !==
+      JSON.stringify(approved.map((i) => i.id).sort());
+  const saved = !editing && approved.length > 0;
+  const cancel = () => {
+    setSelected(approved.map((i) => i.id));
+    setManual("");
+    setEditing(false);
+    setSavedRecently(false);
+  };
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (
@@ -476,11 +497,14 @@ function Profile({
       })
     ) {
       setManual("");
-      onReady();
+      setEditing(false);
+      setSavedRecently(true);
     }
   }
   return (
-    <section className={`profile-page ${readOnly ? "read-only" : ""}`}>
+    <section
+      className={`profile-page ${readOnly ? "read-only" : ""} ${saved ? "profile-saved" : "profile-editing"}`}
+    >
       <div className="page-heading">
         <div>
           <span className="eyebrow">YOUR PROFILE</span>
@@ -495,15 +519,6 @@ function Profile({
           </p>
         </div>
       </div>
-      <div className="steps">
-        <span className="done">
-          <Check size={13} /> YOUR ROOM
-        </span>
-        <i />
-        <span className="current">02 YOUR INTERESTS</span>
-        <i />
-        <span>03 YOUR RELIC</span>
-      </div>
       {s.notice && (
         <div className="notice" role="status">
           <p>{s.notice}</p>
@@ -511,7 +526,7 @@ function Profile({
       )}
       <div className="profile-grid">
         <section className="panel source-panel">
-          <span className="eyebrow">01 / YOUR PROFILE</span>
+          <span className="eyebrow">INSTAGRAM</span>
           <h2>The things you’re into.</h2>
           <p>
             Connect Instagram to find interests in your profile and recent
@@ -533,7 +548,7 @@ function Profile({
               ? "Profile connected"
               : s.instagramReady
                 ? "Ready to connect"
-                : "You can also share text or add interests below"}
+                : "You can add interests without connecting"}
           </div>
           {s.sources.some((source) => source.kind !== "manual") && (
             <div className="notice" style={{ flexDirection: "column" }}>
@@ -570,169 +585,156 @@ function Profile({
             Instagram supports Business and Creator accounts. We read your bio
             and recent captions, never your messages or saved posts.
           </p>
-          <div className="or-divider">
-            <span />
-            OR A FEW WORDS FROM YOU
-            <span />
-          </div>
-          <label>
-            Selected profile text
-            <textarea
-              value={text}
-              maxLength={16000}
-              rows={5}
-              disabled={readOnly}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Paste your bio or a few captions you’d like to share…"
-            />
-          </label>
-          {!readOnly && (
-            <>
-              <div className="text-actions">
-                <input
-                  className="file-input"
-                  type="file"
-                  ref={fileRef}
-                  accept=".txt,text/plain"
-                  tabIndex={-1}
-                  aria-label="Upload profile text file"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setFileError("");
-                    if (file.size > 64000) {
-                      setFileError("Choose a text file smaller than 64 KB.");
-                      return;
-                    }
-                    const contents = await file.text();
-                    if (contents.length > 16000) {
-                      setFileError(
-                        "Keep your selected text under 16,000 characters.",
-                      );
-                      return;
-                    }
-                    setText(contents);
-                    e.target.value = "";
-                  }}
-                />
-                <button
-                  className="text-button"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload size={14} />
-                  Upload .txt
-                </button>
-                <span>Only what you choose to share</span>
-              </div>
-              {fileError && (
-                <p className="inline-error" role="alert">
-                  {fileError}
-                </p>
-              )}
-              <button
-                className="secondary full"
-                disabled={!!busy || !text.trim()}
-                onClick={() => run("extract", "/profile/text", { text })}
-              >
-                {busy === "extract" ? (
-                  <LoaderCircle className="spin" size={16} />
-                ) : null}
-                Find my interests
-              </button>
-            </>
-          )}
           <div className="quiet-note">
             <Shield size={15} />
             <p>
-              Shared text is sent to Meta AI to suggest interests. Only approved
-              interests shape the game. Source text is removed when the room
-              closes.
+              Your imported profile is sent to Meta AI to suggest interests.
+              Only the interests you save are used for questions. Imported text
+              is removed when the room closes.
             </p>
           </div>
         </section>
         <section className="panel interest-panel">
-          <span className="eyebrow">02 / YOUR INTERESTS</span>
-          <h2>What feels like you?</h2>
+          <span className="eyebrow">YOUR INTERESTS</span>
+          <h2>{saved ? "The things you chose." : "What feels like you?"}</h2>
           <p>
-            Some of these might fit. Others might not. You can remove any of
-            them or add something your profile doesn’t show.
+            {saved
+              ? "These interests will help shape the questions at your table."
+              : "Keep what fits, leave out what doesn’t, and add anything missing."}
           </p>
-          {s.me.interests.length ? (
-            <div className="interest-choices">
-              {s.me.interests.map((i) => (
-                <button
-                  key={i.id}
-                  type="button"
-                  disabled={readOnly}
-                  aria-pressed={selected.includes(i.id)}
-                  className={
-                    selected.includes(i.id) ? "interest selected" : "interest"
-                  }
-                  onClick={() =>
-                    setSelected(
-                      selected.includes(i.id)
-                        ? selected.filter((id) => id !== i.id)
-                        : [...selected, i.id],
-                    )
-                  }
-                >
-                  <span aria-hidden="true">
-                    {selected.includes(i.id) ? "✓" : "+"}
-                  </span>
-                  {i.label}
-                  {selected.includes(i.id) && <Check size={13} />}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="interest-empty">
-              <h3>Nothing here yet.</h3>
-              <p>
-                Connect your profile, share a little text,
-                <br />
-                or add your interests below.
-              </p>
-            </div>
-          )}
-          <form id="interests-form" onSubmit={submit}>
-            <label>
-              Add a few more
-              <input
-                value={manual}
-                maxLength={600}
-                disabled={readOnly}
-                onChange={(e) => setManual(e.target.value)}
-                placeholder="Climbing, live music, cooking…"
-              />
-              <small>Separate interests with commas. Up to 12 total.</small>
-            </label>
-            <div className="approval-note">
-              <CheckCircle2 size={15} />
-              <span>Only your selections go into the game.</span>
-              <span>{total}/12 selected</span>
-            </div>
-            {!readOnly && (
-              <div className="profile-action">
-                <button
-                  className="primary full"
-                  disabled={!!busy || total === 0 || total > 12}
-                  type="submit"
-                >
-                  {busy === "interests" ? (
-                    <LoaderCircle className="spin" size={16} />
-                  ) : (
-                    <>
-                      Save my interests
-                      <ArrowRight size={17} />
-                    </>
-                  )}
-                </button>
+          {saved || readOnly ? (
+            <>
+              <div className="saved-status" role="status" aria-live="polite">
+                <CheckCircle2 size={18} />
+                <span>
+                  {!approved.length
+                    ? "No interests saved"
+                    : savedRecently
+                      ? "Interests saved"
+                      : "Your interests are saved"}
+                </span>
               </div>
-            )}
-          </form>
+              <ul className="saved-interests" aria-label="Saved interests">
+                {approved.map((i) => (
+                  <li key={i.id}>{i.label}</li>
+                ))}
+              </ul>
+              {!readOnly && (
+                <>
+                  <button
+                    className="text-button"
+                    disabled={!!busy}
+                    onClick={() => {
+                      setEditing(true);
+                      setSavedRecently(false);
+                    }}
+                  >
+                    Edit interests
+                  </button>
+                  <div className="profile-action">
+                    <button
+                      className="primary full"
+                      disabled={!!busy}
+                      onClick={onReady}
+                    >
+                      Back to the table <ArrowRight size={17} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {s.me.interests.length ? (
+                <div className="interest-choices">
+                  {s.me.interests.map((i) => (
+                    <button
+                      key={i.id}
+                      type="button"
+                      disabled={!!busy}
+                      aria-pressed={selected.includes(i.id)}
+                      className={
+                        selected.includes(i.id)
+                          ? "interest selected"
+                          : "interest"
+                      }
+                      onClick={() =>
+                        setSelected(
+                          selected.includes(i.id)
+                            ? selected.filter((id) => id !== i.id)
+                            : [...selected, i.id],
+                        )
+                      }
+                    >
+                      <span aria-hidden="true">
+                        {selected.includes(i.id) ? "✓" : "+"}
+                      </span>
+                      {i.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="interest-empty">
+                  <h3>A few things you like.</h3>
+                  <p>You can connect Instagram or add your interests here.</p>
+                </div>
+              )}
+              <form id="interests-form" onSubmit={submit}>
+                <label>
+                  Anything else?
+                  <input
+                    value={manual}
+                    maxLength={600}
+                    disabled={!!busy}
+                    onChange={(e) => setManual(e.target.value)}
+                    placeholder="Climbing, live music, cooking"
+                  />
+                  <small>
+                    Separate interests with commas. You can save up to 12.
+                  </small>
+                </label>
+                <div className="approval-note" aria-live="polite">
+                  <span>{dirty ? "Unsaved changes" : "No changes yet"}</span>
+                  <span>{total} of 12 selected</span>
+                </div>
+                {total > 12 && (
+                  <p className="inline-error" role="alert">
+                    Choose no more than 12 interests before saving.
+                  </p>
+                )}
+                <div className="profile-action">
+                  <button
+                    className="primary full"
+                    disabled={!!busy || !dirty || total === 0 || total > 12}
+                    type="submit"
+                  >
+                    {busy === "interests" ? (
+                      <>
+                        <LoaderCircle className="spin" size={16} />
+                        Saving interests…
+                      </>
+                    ) : approved.length ? (
+                      "Save changes"
+                    ) : (
+                      "Save my interests"
+                    )}
+                  </button>
+                  {approved.length > 0 && (
+                    <button
+                      className="text-button cancel-edit"
+                      type="button"
+                      disabled={!!busy}
+                      onClick={cancel}
+                    >
+                      Cancel changes
+                    </button>
+                  )}
+                </div>
+              </form>
+            </>
+          )}
           <p className="fine-print under-save">
-            You can change these whenever you like. Nothing is used until you
-            choose it.
+            You can come back and change these whenever you like.
           </p>
           {s.sources.length > 0 && (
             <details>

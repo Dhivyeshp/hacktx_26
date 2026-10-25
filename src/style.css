@@ -1087,3 +1087,37 @@ footer > span {
     scroll-behavior: auto !important;
   }
 }
+
+.saved-status {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #3f5534;
+  font-size: 14px;
+  margin: 26px 0 18px;
+}
+.saved-interests {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+}
+.saved-interests li {
+  padding: 13px 0;
+  border-bottom: 1px solid #a7ad97;
+  font-size: 16px;
+}
+.profile-action {
+  margin-top: 24px;
+}
+.cancel-edit {
+  display: flex;
+  margin: 10px auto 0;
+}
+@media (max-width: 760px) {
+  .profile-action {
+    margin-top: 0;
+  }
+  .profile-editing:not(.read-only) {
+    padding-bottom: 136px;
+  }
+}
