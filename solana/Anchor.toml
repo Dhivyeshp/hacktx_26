@@ -1,0 +1,25 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+centerpiece = "DqqLyrxUPAiJ2m3Fu4uLL6GirTH2cSXXS9wJHmGngaZX"
+
+[programs.localnet]
+centerpiece = "DqqLyrxUPAiJ2m3Fu4uLL6GirTH2cSXXS9wJHmGngaZX"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "node --import tsx --test tests/centerpiece.test.ts"
+
+[hooks]
+
+[test]
+startup_wait = 10000
+shutdown_wait = 2000
+upgradeable = false

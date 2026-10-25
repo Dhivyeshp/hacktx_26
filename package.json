@@ -1,0 +1,19 @@
+{
+  "name": "centerpiece",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "solana/client"
+  ],
+  "scripts": {
+    "chain:build": "cd solana && anchor build && npm run -w @centerpiece/chain sync-idl",
+    "chain:test": "solana/scripts/test-local.sh",
+    "chain:init": "npm run -w @centerpiece/chain init",
+    "chain:smoke": "npm run -w @centerpiece/chain smoke",
+    "chain:serve": "npm run -w @centerpiece/chain serve"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
