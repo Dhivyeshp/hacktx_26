@@ -2670,3 +2670,13 @@ label small,
     overflow-y: auto;
   }
 }
+.gm-reset {
+  border-top: 1px solid var(--line);
+  padding: 24px 0;
+  margin-top: 28px;
+}
+.gm-reset p {
+  max-width: 640px;
+  color: var(--text-muted);
+  line-height: 1.7;
+}

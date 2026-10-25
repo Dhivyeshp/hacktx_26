@@ -1197,6 +1197,7 @@ test("GM control cookies are explicit, room scoped, and cannot be obtained from 
     "transcript",
     "speaker",
     "audio-ticket",
+    "reset",
     "invite",
   ]) {
     assert.equal(
@@ -1767,4 +1768,126 @@ test("explicit demo mode opens one GM game and joins players without codes; norm
     demoServer.closeAllConnections();
     await new Promise<void>((resolve) => demoServer.close(() => resolve()));
   }
+});
+
+test("reset removes game data and credentials, preserves GM access and spending caps, and permits rejoining", async () => {
+  const made = await request(
+    "/control/rooms",
+    { name: "Reset rehearsal" },
+    "",
+    true,
+  );
+  const roomCode = made.body.room.code;
+  const member = await request("/join", {
+    code: roomCode,
+    name: "Reset player",
+  });
+  const gm = await request("/questions/login", {
+    code: roomCode,
+    key: "test-control-credential",
+  });
+  const room = getSession(db, roomCode)!;
+  const pid = room.players[0].id;
+  room.sources[pid] = [
+    { id: "source-to-remove", kind: "intro", text: "I enjoy pottery." },
+  ];
+  room.context = "Private context";
+  save(db, room);
+  await request(
+    "/questions/transcript",
+    { id: "reset-speech", text: "Testing the reset" },
+    gm.cookie,
+  );
+  db.prepare("INSERT INTO connections VALUES(?,?,?,?)").run(
+    pid,
+    room.id,
+    "encrypted-test-token",
+    Date.now() + 60000,
+  );
+  db.prepare("INSERT INTO oauth VALUES(?,?,?,?)").run(
+    "reset-state",
+    pid,
+    room.id,
+    Date.now() + 60000,
+  );
+  db.prepare("INSERT INTO audio_tickets VALUES(?,?,?,?)").run(
+    "reset-ticket",
+    room.id,
+    Date.now() + 60000,
+    "linear16",
+  );
+  db.prepare("INSERT INTO game_model_attempts VALUES(?,?,?)").run(
+    "reset-model-attempt",
+    room.id,
+    Date.now(),
+  );
+  db.prepare("INSERT INTO audio_minutes VALUES(?,?,?)").run(
+    "reset-audio-minute",
+    room.id,
+    Date.now(),
+  );
+  assert.equal((await request("/questions/reset", {}, gm.cookie)).status, 400);
+  assert.equal(
+    (await request("/questions/reset", { confirm: true }, member.cookie))
+      .status,
+    401,
+  );
+  assert.equal(
+    (await request("/questions/reset", { confirm: true }, gm.cookie)).status,
+    200,
+  );
+  const empty = getSession(db, roomCode)!;
+  assert.equal(empty.status, "lobby");
+  assert.deepEqual(empty.players, []);
+  assert.deepEqual(empty.sources, {});
+  assert.deepEqual(empty.rounds, []);
+  assert.deepEqual(empty.recommendations, []);
+  assert.equal(empty.context, "");
+  assert.equal(empty.conversation, undefined);
+  for (const table of [
+    "credentials",
+    "connections",
+    "oauth",
+    "audio_tickets",
+    "questions_invites",
+  ])
+    assert.equal(
+      (
+        db
+          .prepare(`SELECT count(*) n FROM ${table} WHERE session_id=?`)
+          .get(room.id) as any
+      ).n,
+      0,
+    );
+  for (const table of ["game_model_attempts", "audio_minutes"])
+    assert.equal(
+      (
+        db
+          .prepare(`SELECT count(*) n FROM ${table} WHERE session_id=?`)
+          .get(room.id) as any
+      ).n,
+      1,
+    );
+  assert.equal(
+    (await request("/session", undefined, member.cookie)).status,
+    401,
+  );
+  assert.equal(
+    (await request("/prompt", undefined, member.cookie)).status,
+    401,
+  );
+  const feed = await request("/questions/session", undefined, gm.cookie);
+  assert.equal(feed.status, 200);
+  assert.equal(feed.body.canControl, true);
+  assert.equal(feed.body.players.length, 0);
+  assert.equal(
+    (
+      await request(
+        "/join",
+        { code: roomCode, name: "Fresh player" },
+        member.cookie,
+      )
+    ).status,
+    200,
+  );
 });

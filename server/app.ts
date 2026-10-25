@@ -713,6 +713,7 @@ export function createApp(db = openDb()) {
       "/api/questions/assign",
       "/api/questions/clear",
       "/api/questions/finish",
+      "/api/questions/reset",
       "/api/questions/conversation",
       "/api/questions/transcript",
       "/api/questions/speaker",
@@ -1000,6 +1001,49 @@ export function createApp(db = openDb()) {
         };
         void invoke().catch(() => {});
       }
+    }),
+  );
+  app.post(
+    ["/api/control/rooms/:code/reset", "/api/questions/reset"],
+    wrap((req, res) => {
+      z.object({ confirm: z.literal(true) }).parse(req.body);
+      const s = room(req);
+      if (
+        generating.has(s.id) ||
+        s.players.some((p) => analyzingProfiles.has(p.id))
+      )
+        return res
+          .status(409)
+          .json({
+            error:
+              "Wait for the current preparation to finish, then reset the game.",
+          });
+      audio.stop(s.id);
+      const fresh: Session = {
+        id: s.id,
+        code: s.code,
+        name: s.name,
+        version: getSession(db, s.id)!.version,
+        status: "lobby",
+        players: [],
+        recommendations: [],
+        rounds: [],
+        sources: {},
+        context: "",
+      };
+      db.transaction(() => {
+        for (const table of [
+          "credentials",
+          "connections",
+          "oauth",
+          "audio_tickets",
+          "questions_invites",
+          "events",
+        ])
+          db.prepare(`DELETE FROM ${table} WHERE session_id=?`).run(s.id);
+        touch(fresh, "game.reset");
+      })();
+      res.json({ ok: true });
     }),
   );
   app.post(

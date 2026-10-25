@@ -91,3 +91,14 @@ testing with Tina's actual microphone; it is separate from the Vision Pro relay.
 Outcomes remain human-confirmed. Voice attribution is not used for automatic
 currency payouts. Real microphone quality, overlapping speech and the complete
 Tina/Vision Pro hardware loop require an in-person test.
+
+## Resetting a rehearsal
+
+At the bottom of `/gm`, choose Reset game and confirm Reset game and remove
+players. It stops streaming and clears players, imported profiles, interests,
+transcript, voice mappings, summaries, prompts, rounds and event history. Player
+credentials, Instagram tokens, pending OAuth attempts and audio tickets are
+removed. Phones return to onboarding on their next session refresh. The same
+`/join`, `/gm` and NFC `/prompt` links keep working; GM access stays available.
+Existing Muse and transcription usage counters remain to preserve spending caps.
+Reset waits for ongoing profile or prompt preparation to finish.

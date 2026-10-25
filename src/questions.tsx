@@ -43,6 +43,7 @@ export function Questions() {
   const [testText, setTestText] = useState("");
   const [testSpeaker, setTestSpeaker] = useState("Speaker A");
   const [clearTranscript, setClearTranscript] = useState(false);
+  const [resetGame, setResetGame] = useState(false);
   const [tinaTicket, setTinaTicket] = useState("");
   const audio = useRef<AudioHandle | null>(null);
   const audioEpoch = useRef(0);
@@ -1118,6 +1119,61 @@ export function Questions() {
                 )}
               </div>
             </div>
+            {feed.canControl && (
+              <section className="gm-reset" aria-label="Reset game">
+                {resetGame ? (
+                  <>
+                    <h2>Start again?</h2>
+                    <p>
+                      This clears every player, profile, transcript, prompt and
+                      recorded turn in this game. Everyone will need to join
+                      again. Spending limits stay in place.
+                    </p>
+                    <div className="gm-actions">
+                      <button
+                        className="secondary"
+                        disabled={busy || feed.preparing}
+                        onClick={async () => {
+                          audioEpoch.current++;
+                          audio.current?.stop();
+                          setAudioStatus("idle");
+                          if (await act("reset", { confirm: true })) {
+                            setResetGame(false);
+                            setTarget("");
+                            setContext("");
+                            setEditing("");
+                            setInstructions("");
+                            setConsent(false);
+                            setTestText("");
+                            setTestSpeaker("Speaker A");
+                            setClearTranscript(false);
+                            setTinaTicket("");
+                            setPrivateLink("");
+                          }
+                        }}
+                      >
+                        Reset game and remove players
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => setResetGame(false)}
+                      >
+                        Keep playing
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    className="text-button"
+                    disabled={busy || feed.preparing}
+                    onClick={() => setResetGame(true)}
+                  >
+                    Reset game
+                  </button>
+                )}
+              </section>
+            )}
             <footer className="questions-footer">
               <LockKeyhole size={14} />
               <span>

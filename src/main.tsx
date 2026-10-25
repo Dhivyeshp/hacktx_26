@@ -126,7 +126,9 @@ function App() {
       try {
         const current: Snapshot = await api("/session");
         if (sRef.current?.room.id === current.room.id) accept(current);
-      } catch {}
+      } catch (e: any) {
+        if (e.status === 401) location.reload();
+      }
     };
     const interval = setInterval(refresh, 10000);
     return () => clearInterval(interval);
