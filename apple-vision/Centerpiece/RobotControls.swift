@@ -13,8 +13,8 @@ struct HandMotionControls: View {
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 18) {
-                hand("Left", tracked: hands.leftTracked, pinched: hands.leftPinched)
-                hand("Right", tracked: hands.rightTracked, pinched: hands.rightPinched)
+                hand("Left", tracked: hands.leftTracked, pinched: hands.leftPinched, issue: hands.leftTrackingIssue)
+                hand("Right", tracked: hands.rightTracked, pinched: hands.rightPinched, issue: hands.rightTrackingIssue)
             }.frame(maxWidth: .infinity)
             HStack(spacing: 6) {
                 direction("Left", icon: "arrow.turn.up.left", value: .left)
@@ -54,13 +54,14 @@ struct HandMotionControls: View {
         }
     }
 
-    private func hand(_ title: String, tracked: Bool, pinched: Bool) -> some View {
+    private func hand(_ title: String, tracked: Bool, pinched: Bool, issue: String?) -> some View {
         VStack(spacing: 6) {
             Image(systemName: pinched ? "hand.pinch.fill" : "hand.raised.fill")
                 .font(.system(size: 28)).foregroundStyle(pinched ? controlMint : .white.opacity(tracked ? 0.8 : 0.25))
             Text(title).font(.system(size: 10, weight: .semibold))
-            Text(tracked ? pinched ? "Pinched" : "Open" : "Not tracked")
+            Text(tracked ? pinched ? "Pinched" : "Open" : issue ?? "Not tracked")
                 .font(.system(size: 9)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.vertical, 10)
             .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
     }

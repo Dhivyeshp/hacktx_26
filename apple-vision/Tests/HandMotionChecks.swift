@@ -48,6 +48,7 @@ struct HandMotionChecks {
         assert(input.step(at: 1.71, enabled: true) == .stop)
         update(1.8, .nan, 0.01)
         assert(!input.bothFresh(at: 1.8))
+        checkTrackingRecovery()
         let model = DemoSession()
         model.selectPlayer(Player.samples[0]); model.selectQuestion(0); model.enterDriving()
         model.enableHandDriving()
@@ -79,5 +80,93 @@ struct HandMotionChecks {
         model.emergencyStop()
         assert(!model.handDrivingEnabled && model.wheelCommand == .zero)
         print("PASS: straight/left/right wheel mapping, neutral reset, stable starts, release stop, pinch hysteresis, missing/stale hands, interruption, invalid samples")
+    }
+
+    static func drivingInput() -> HandMotionInput {
+        var input = HandMotionInput()
+        for time in [0.0, 0.16] {
+            input.update(leftHand: true, distance: 0.06, at: time)
+            input.update(leftHand: false, distance: 0.06, at: time)
+            assert(input.step(at: time, enabled: true) == .stop)
+        }
+        for time in [0.17, 0.34] {
+            input.update(leftHand: true, distance: 0.01, at: time)
+            input.update(leftHand: false, distance: 0.01, at: time)
+            _ = input.step(at: time, enabled: true)
+        }
+        assert(input.intent == .straight && !input.needsRelease)
+        return input
+    }
+
+    static func checkTrackingRecovery() {
+        var brief = drivingInput()
+        brief.update(leftHand: true, distance: nil, at: 0.36)
+        brief.update(leftHand: false, distance: 0.01, at: 0.36)
+        assert(brief.step(at: 0.36, enabled: true) == .stop,
+               "One uncertain fingertip stops both wheels immediately; never infer a turn")
+        assert(!brief.needsRelease, "Brief fingertip uncertainty must not latch the neutral reset")
+        for time in [0.40, 0.50] {
+            brief.update(leftHand: true, distance: 0.01, at: time)
+            brief.update(leftHand: false, distance: 0.01, at: time)
+            assert(brief.step(at: time, enabled: true) == .stop,
+                   "Recovered tracking must settle before restarting")
+        }
+        brief.update(leftHand: true, distance: 0.01, at: 0.57)
+        brief.update(leftHand: false, distance: 0.01, at: 0.57)
+        assert(brief.step(at: 0.57, enabled: true) == .straight,
+               "A short fingertip dropout may recover after stable fresh samples")
+
+        var prolonged = drivingInput()
+        for time in [0.36, 0.45, 0.55, 0.60] {
+            prolonged.update(leftHand: true, distance: nil, at: time)
+            prolonged.update(leftHand: false, distance: 0.01, at: time)
+            assert(prolonged.step(at: time, enabled: true) == .stop)
+        }
+        assert(prolonged.needsRelease, "Repeated invalid samples must not refresh the last-valid timestamp")
+        for time in [0.61, 0.78] {
+            prolonged.update(leftHand: true, distance: 0.01, at: time)
+            prolonged.update(leftHand: false, distance: 0.01, at: time)
+            assert(prolonged.step(at: time, enabled: true) == .stop && prolonged.needsRelease,
+                   "Held pinches cannot resume after sustained loss")
+        }
+        for time in [0.79, 0.96] {
+            prolonged.update(leftHand: true, distance: 0.06, at: time)
+            prolonged.update(leftHand: false, distance: 0.06, at: time)
+            _ = prolonged.step(at: time, enabled: true)
+        }
+        assert(!prolonged.needsRelease, "Opening both hands must recover after sustained loss")
+
+        var missedTicks = drivingInput()
+        missedTicks.update(leftHand: true, distance: 0.01, at: 0.70)
+        missedTicks.update(leftHand: false, distance: 0.01, at: 0.70)
+        assert(missedTicks.step(at: 0.70, enabled: true) == .stop && missedTicks.needsRelease,
+               "New samples must not hide a long gap when the evaluation loop was stalled")
+
+        var lostHand = drivingInput()
+        lostHand.update(leftHand: true, distance: nil, at: 0.36, handTracked: false)
+        assert(lostHand.step(at: 0.36, enabled: true) == .stop && lostHand.needsRelease,
+               "Explicit whole-hand loss still latches reset immediately")
+
+        var interrupted = drivingInput()
+        interrupted.update(leftHand: true, distance: nil, at: 0.36)
+        assert(interrupted.step(at: 0.36, enabled: false) == .stop && interrupted.needsRelease,
+               "Scene, panel, video and disable gates must override brief recovery")
+
+        var corrupt = drivingInput()
+        corrupt.update(leftHand: true, distance: .nan, at: 0.36)
+        assert(corrupt.step(at: 0.36, enabled: true) == .stop && corrupt.needsRelease,
+               "Corrupt numeric data is not a recoverable fingertip dropout")
+
+        var initial = HandMotionInput()
+        initial.update(leftHand: true, distance: 0.06, at: 0)
+        initial.update(leftHand: false, distance: 0.06, at: 0)
+        _ = initial.step(at: 0, enabled: true)
+        initial.update(leftHand: true, distance: nil, at: 0.1)
+        _ = initial.step(at: 0.1, enabled: true)
+        initial.update(leftHand: true, distance: 0.06, at: 0.16)
+        initial.update(leftHand: false, distance: 0.06, at: 0.16)
+        assert(initial.step(at: 0.16, enabled: true) == .stop && initial.needsRelease,
+               "Uncertain samples cannot count toward the initial continuous open-hand reset")
+        print("PASS: brief fingertip recovery, stable restart, sustained loss, missed ticks, whole-hand loss, interrupted recovery, invalid data, continuous neutral reset")
     }
 }

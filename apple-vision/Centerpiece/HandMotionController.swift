@@ -10,6 +10,8 @@ final class HandMotionController {
     private(set) var rightTracked = false
     private(set) var leftPinched = false
     private(set) var rightPinched = false
+    private(set) var leftTrackingIssue: String? = "Waiting for hand"
+    private(set) var rightTrackingIssue: String? = "Waiting for hand"
     private(set) var needsRelease = true
     private(set) var intent: HandDriveIntent = .stop
     private(set) var isRunning = false
@@ -54,8 +56,7 @@ final class HandMotionController {
         do {
             try await arSession.run([provider])
             isRunning = true
-            var lastLeft: TimeInterval = -.infinity
-            var lastRight: TimeInterval = -.infinity
+            var lastDiagnostic = ""
             while !Task.isCancelled, runID == id, model.handDrivingEnabled {
                 let now = ProcessInfo.processInfo.systemUptime
                 // Reading latestAnchors while the provider is paused/stopped emits
@@ -65,8 +66,8 @@ final class HandMotionController {
                     isRunning = false
                     leftTracked = false; rightTracked = false
                     leftPinched = false; rightPinched = false
-                    lastLeft = -.infinity; lastRight = -.infinity
-                    input.reset(); needsRelease = true
+                    leftTrackingIssue = "Tracking paused"; rightTrackingIssue = "Tracking paused"
+                    input = HandMotionInput(); needsRelease = true
                     stopOwnedMotion(model)
                     model.halt()
                     status = "Hand tracking paused. Keep the immersive view active."
@@ -77,18 +78,22 @@ final class HandMotionController {
                 isRunning = true
                 let anchors = provider.latestAnchors
                 if let anchor = anchors.leftHand {
-                    let distance = pinchDistance(anchor)
-                    input.update(leftHand: true, distance: distance, at: now)
-                    lastLeft = distance == nil ? -.infinity : now
+                    let sample = pinchSample(anchor)
+                    input.update(leftHand: true, distance: sample.distance, at: now,
+                                 handTracked: anchor.isTracked && anchor.handSkeleton != nil)
+                    leftTrackingIssue = sample.issue
                 }
                 if let anchor = anchors.rightHand {
-                    let distance = pinchDistance(anchor)
-                    input.update(leftHand: false, distance: distance, at: now)
-                    lastRight = distance == nil ? -.infinity : now
+                    let sample = pinchSample(anchor)
+                    input.update(leftHand: false, distance: sample.distance, at: now,
+                                 handTracked: anchor.isTracked && anchor.handSkeleton != nil)
+                    rightTrackingIssue = sample.issue
                 }
                 let running = provider.state == .running
-                leftTracked = running && now - lastLeft < 0.25
-                rightTracked = running && now - lastRight < 0.25
+                leftTracked = running && input.isFresh(leftHand: true, at: now)
+                rightTracked = running && input.isFresh(leftHand: false, at: now)
+                if !leftTracked && leftTrackingIssue == nil { leftTrackingIssue = "No fresh sample" }
+                if !rightTracked && rightTrackingIssue == nil { rightTrackingIssue = "No fresh sample" }
                 leftPinched = leftTracked && input.leftPinched
                 rightPinched = rightTracked && input.rightPinched
                 let allowed = running && model.canDrive && !model.armed
@@ -98,7 +103,9 @@ final class HandMotionController {
                     stopOwnedMotion(model)
                     // Tracking loss also invalidates a pending capsule arming.
                     model.halt()
-                    status = "Show both hands. Open both pinches to resume."
+                    status = needsRelease
+                        ? "Tracking lost. Show both hands, then open both pinches."
+                        : "Fingertips uncertain · wheels stopped. Hold both hands in view."
                 } else if !model.sceneActive {
                     stopOwnedMotion(model)
                     status = "Hand driving paused while the app is inactive."
@@ -108,12 +115,17 @@ final class HandMotionController {
                 } else if model.armed {
                     stopOwnedMotion(model)
                     status = "Drop armed · driving paused"
+                } else if let reason = model.driveBlockReason {
+                    stopOwnedMotion(model)
+                    status = "Wheels paused · \(reason)"
                 } else if needsRelease {
                     stopOwnedMotion(model)
                     status = "Open both hands to get ready."
                 } else if intent == .stop {
                     stopOwnedMotion(model)
-                    status = "Ready · thumb to middle finger to drive"
+                    status = leftPinched || rightPinched
+                        ? "Hold pinch steady…"
+                        : "Ready · thumb to middle finger to drive"
                 } else {
                     if ownedGesture == nil { ownedGesture = model.beginDrive() }
                     if let ownedGesture {
@@ -125,6 +137,11 @@ final class HandMotionController {
                         }
                     }
                     status = intent.rawValue
+                }
+                let diagnostic = "\(status) | left: \(leftTrackingIssue ?? (leftPinched ? "pinched" : "open")), right: \(rightTrackingIssue ?? (rightPinched ? "pinched" : "open"))"
+                if diagnostic != lastDiagnostic {
+                    print("[hands] \(diagnostic)")
+                    lastDiagnostic = diagnostic
                 }
                 try await Task.sleep(for: .milliseconds(30))
             }
@@ -150,6 +167,7 @@ final class HandMotionController {
         isRequestingPermission = false
         leftTracked = false; rightTracked = false
         leftPinched = false; rightPinched = false; needsRelease = true
+        leftTrackingIssue = "Tracking off"; rightTrackingIssue = "Tracking off"
         stopOwnedMotion(model)
         input.reset()
         intent = .stop
@@ -162,13 +180,17 @@ final class HandMotionController {
         intent = .stop
     }
 
-    private func pinchDistance(_ hand: HandAnchor) -> Float? {
-        guard hand.isTracked, let skeleton = hand.handSkeleton else { return nil }
+    private func pinchSample(_ hand: HandAnchor) -> (distance: Float?, issue: String?) {
+        guard hand.isTracked else { return (nil, "Hand not tracked") }
+        guard let skeleton = hand.handSkeleton else { return (nil, "No hand skeleton") }
         let thumb = skeleton.joint(.thumbTip)
         let middle = skeleton.joint(.middleFingerTip)
-        guard thumb.isTracked, middle.isTracked else { return nil }
+        guard thumb.isTracked else { return (nil, "Thumb tip uncertain") }
+        guard middle.isTracked else { return (nil, "Middle tip uncertain") }
         let a = thumb.anchorFromJointTransform.columns.3
         let b = middle.anchorFromJointTransform.columns.3
-        return simd_distance(SIMD3(a.x, a.y, a.z), SIMD3(b.x, b.y, b.z))
+        let distance = simd_distance(SIMD3(a.x, a.y, a.z), SIMD3(b.x, b.y, b.z))
+        // Pass invalid values through so the input model latches a full reset.
+        return (distance, distance.isFinite ? nil : "Invalid finger position")
     }
 }

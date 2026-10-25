@@ -47,3 +47,12 @@ Releasing, losing tracking, suspending control, or stopping queues a zero-speed 
 Motion starts only after explicit Enable hand driving, fresh tracking, an open-hand reset, live video, and a connected Pi peer. Demo photo mode sends no movement. Reconnect does not replay the previous command. Disconnect attempts a final zero/stop before closing the old socket with bounded cleanup; network failure cannot guarantee that the robot receives it. The firmware needs its own motion timeout.
 
 The extended localhost fixture decodes masked client WebSocket frames and verifies actual outbound wheel fields/routing, a canceled 1000-intent burst, and the final stop before disconnect. `Tests/HandMotionChecks.swift` checks neutral reset, stable combinations, wheel direction, hysteresis, immediate release, tracking loss and invalid samples. These checks do not move the real robot.
+
+Fingertip uncertainty stops wheels immediately but preserves a completed neutral
+reset if valid tracking returns within 250ms of the last valid sample. A fresh
+160ms stable gesture is required before resuming. Whole-hand loss, longer gaps,
+invalid numeric data and control interruptions still require opening both hands.
+Repeated invalid samples cannot extend that recovery window. Hand cards and
+`[hands]` console messages identify thumb-tip, middle-tip and whole-hand failures.
+The hand-input checks cover short recovery, sustained loss, held pinches after
+loss, gaps between evaluation ticks, and interruptions during recovery.
