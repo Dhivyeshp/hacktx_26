@@ -8,7 +8,8 @@ if (!token) {
   process.exit(1);
 }
 const port = process.env.PORT || "3000";
-const child = spawn("ngrok", ["http", port], {
+const url = process.env.NGROK_URL?.trim();
+const child = spawn("ngrok", ["http", port, ...(url ? ["--url", url] : [])], {
   stdio: ["inherit", "pipe", "pipe"],
   env: process.env,
 });

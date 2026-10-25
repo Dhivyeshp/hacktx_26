@@ -98,6 +98,8 @@ The connector imports supported profile text and up to 12 recent captions, probi
 
 If Cloudflare Tunnel cannot connect on the current network, install the official ngrok client with `brew install ngrok`. Create an ngrok account and paste its **agent authtoken** into the ignored `.env` file as `NGROK_AUTHTOKEN`. This is separate from the Muse key and the ngrok management API key.
 
+For a reserved ngrok domain, set `NGROK_URL=https://your-name.ngrok.app` in `.env` alongside the matching `PUBLIC_URL` and `INSTAGRAM_REDIRECT_URI`. The launcher passes this URL to ngrok on every start.
+
 With the app running on port 3000, run `npm run tunnel`. The launcher reads `.env` and redacts the token from any agent output. Retrieve the HTTPS forwarding address from ngrok, set `PUBLIC_URL` to that origin and `INSTAGRAM_REDIRECT_URI` to its `/api/instagram/callback` URL, then restart the app. Register the exact same callback in Meta's Instagram Business Login settings. Use the HTTPS origin for both onboarding and the Instagram connection. Keep the app and tunnel running while testing.
 
 ## Game Master / bot integration boundary
