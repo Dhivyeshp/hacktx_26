@@ -37,7 +37,7 @@ static constexpr int PIN_HC165_DATA = 7;
 static constexpr int PIN_HC165_LOAD = 20;
 static constexpr int PIN_HC165_CLK = 21;
 
-static const char* const kJoinUrl = "https://zoning-tacky-mastiff.ngrok-free.dev/join/0AEDDD";
+static const char* const kJoinUrl = "https://destina.ngrok.app/join/0AEDDD";
 static constexpr uint32_t kJoinQrMs = 15000;
 
 class BadgeLcd : public lgfx::LGFX_Device {
