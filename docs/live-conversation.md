@@ -4,12 +4,29 @@ Open a room's private GM link with control permission. Create one with
 `npm run questions:link -- ROOM --control --file`, then open the URL saved in
 `data/questions-access-link.txt`. Keep that link private. Default links are read-only.
 
+## Opening the deployed Game Master
+
+Bookmark `https://your-domain/gm` after signing in. `/questions` remains supported.
+The private cookie restores the room for 12 hours; it is separate from player
+login. A room code alone never grants GM access.
+
+On an already authorized GM screen, expand Open on another device and select
+Create private access link. Copy it to your own device, or open the deployed GM
+there. Each link works once within 10 minutes and grants control for this room.
+Keep it out of public QR codes and player messages. If access expires, create a
+fresh link from an authorized screen or the local CLI, or sign in with the GM key.
+
+The workspace shows current selection, next options, live transcript, voice
+confirmation and players together. Desktop uses two columns; phone shortcuts
+jump between sections without interrupting recording. Generating prompts and
+speaker confirmation are unchanged by this layout.
+
 ## A first test
 
 1. Join at least three players and save their interests.
 2. Use the question library for a free rehearsal, or request three Muse prompts.
 3. Choose a prompt, optionally edit its wording, and open `/prompt` on a joined phone.
-4. In Conversation, confirm everyone agrees to transcription and select Listen on this device. HTTPS and microphone permission are required.
+4. In Live conversation, confirm everyone agrees to transcription and select Listen on this device. HTTPS and microphone permission are required.
 5. Let the assigned player answer a solo prompt. When a voice hint appears, confirm the name or keep it unknown. Correct labels with the speaker dropdowns.
 6. Mark the prompt completed or passed. After at least 40 new transcript words, prepare conversation prompts. Selecting a prompt never identifies a voice automatically.
 

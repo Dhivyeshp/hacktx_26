@@ -210,7 +210,7 @@ on the same domain; an in-app browser or a different browser may need to join ag
 A single shared tag URL cannot identify a physical relic or infer the player’s room
 without their saved player session.
 
-**`/questions?room=ROOMCODE`** is the private Game Master view. It retains
+**`/gm`** (also **`/questions?room=ROOMCODE`**) is the private Game Master view. It retains
 suggestions, the current selection, player readiness and earlier turns. Opening
 or refreshing it never requests Muse generation.
 
@@ -221,7 +221,11 @@ on Tina's public QR code or NFC tags. Access lasts twelve hours in an HttpOnly,
 room-scoped cookie; “Close private view” revokes it. Signing in with the configured
 `GM_API_KEY` also grants control. The browser cookie does not grant bearer API access.
 
-The control view can choose or edit prompts, record completed/passed turns and
+Use **Open on another device** in an authorized GM view to create a one-use
+private link for the deployed app. Bookmark `/gm` there to reopen the room while
+its 12-hour access cookie is valid.
+
+The combined control view can choose or edit prompts, record completed/passed turns and
 transcribe consenting participants through Deepgram. Assigned solo prompts offer
 a suggested speaker name that the GM must confirm. Muse can prepare a bounded
 batch from recent conversation between turns. See [live conversation setup](docs/live-conversation.md)

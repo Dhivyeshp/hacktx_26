@@ -4,7 +4,7 @@ The player NFC route is `/prompt`. Legacy `/relic` and `/c` links redirect there
 `CapsuleSnapshot`. An unauthenticated phone must join a room first. Public prompt
 text is shared; private mission text is filtered on the server by player ID.
 
-The private GM route is `/questions`. Its `QuestionsSnapshot` includes named
+The private GM routes are `/gm` and `/questions`. Its `QuestionsSnapshot` includes named
 players, chronological suggestion batches, current selection and round history.
 Player rows include names, saved-interest readiness and recorded turn counts. It excludes raw profile excerpts, Instagram tokens and player credentials.
 Batches are persisted in the session JSON in SQLite when generation succeeds.
@@ -53,3 +53,9 @@ visibility/pageshow. Polling and transcript events never call Muse. Optional
 between-turn generation occurs only when a turn is cleared and enough new text
 exists. The later Vision Pro relay adapter is still separate work.
 See [live conversation](live-conversation.md) for operation and limits.
+
+A GM with control access can POST `/api/questions/invite` to create a room-scoped,
+one-use control link for another device. Player and read-only cookies are
+rejected. Links expire after ten minutes; the resulting cookie lasts twelve
+hours. This powers Open on another device and always uses `PUBLIC_URL`.
+The combined workspace keeps transcript and prompt controls mounted together.

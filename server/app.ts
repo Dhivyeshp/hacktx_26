@@ -688,6 +688,7 @@ export function createApp(db = openDb()) {
       "/api/questions/transcript",
       "/api/questions/speaker",
       "/api/questions/audio-ticket",
+      "/api/questions/invite",
     ],
     (req, res, next) => {
       try {
@@ -699,6 +700,13 @@ export function createApp(db = openDb()) {
         next(e);
       }
     },
+  );
+  app.post(
+    "/api/questions/invite",
+    wrap((req, res) => {
+      const s = questionsRoom(req, true);
+      res.json(questionsAccess(db, s, "control"));
+    }),
   );
   // The Vision Pro transport will call these operations later. Player cookies grant no control access.
   app.use("/api/control", (req, res, next) => {
@@ -1029,12 +1037,10 @@ export function createApp(db = openDb()) {
       const s = room(req);
       active(s);
       if (generating.has(s.id))
-        return res
-          .status(409)
-          .json({
-            error:
-              "Wait for prompt preparation to finish before changing speaker assignments.",
-          });
+        return res.status(409).json({
+          error:
+            "Wait for prompt preparation to finish before changing speaker assignments.",
+        });
       const { speakerLabel, playerId, dismissRoundId } = z
         .object({
           speakerLabel: z.string().min(1).max(100),

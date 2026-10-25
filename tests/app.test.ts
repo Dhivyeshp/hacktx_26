@@ -1197,6 +1197,7 @@ test("GM control cookies are explicit, room scoped, and cannot be obtained from 
     "transcript",
     "speaker",
     "audio-ticket",
+    "invite",
   ]) {
     assert.equal(
       (await request(`/questions/${op}`, {}, read.cookie)).status,
@@ -1213,6 +1214,26 @@ test("GM control cookies are explicit, room scoped, and cannot be obtained from 
   )!;
   const gm = await request("/questions/access", { token });
   assert.equal(gm.body.canControl, true);
+  const invite = await request("/questions/invite", {}, gm.cookie);
+  assert.equal(invite.status, 200);
+  const invited = await request("/questions/access", {
+    token: new URLSearchParams(new URL(invite.body.url).hash.slice(1)).get(
+      "access",
+    ),
+  });
+  assert.equal(invited.status, 200);
+  assert.equal(invited.body.room.code, code);
+  assert.equal(invited.body.canControl, true);
+  assert.equal(
+    (
+      await request("/questions/access", {
+        token: new URLSearchParams(new URL(invite.body.url).hash.slice(1)).get(
+          "access",
+        ),
+      })
+    ).status,
+    401,
+  );
   assert.equal(
     (await request("/questions/conversation", { automatic: true }, gm.cookie))
       .status,

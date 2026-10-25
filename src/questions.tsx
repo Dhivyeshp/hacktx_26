@@ -30,7 +30,8 @@ export function Questions() {
   const [error, setError] = useState("");
   const [code, setCode] = useState(room),
     [key, setKey] = useState("");
-  const [tab, setTab] = useState<"profiles" | "conversation">("profiles");
+  const [privateLink, setPrivateLink] = useState("");
+  const [linkNotice, setLinkNotice] = useState("");
   const [updated, setUpdated] = useState<number | null>(null);
   const [target, setTarget] = useState("");
   const [context, setContext] = useState("");
@@ -146,6 +147,7 @@ export function Questions() {
     audioEpoch.current++;
     audio.current?.stop();
     setTinaTicket("");
+    setPrivateLink("");
     setBusy(true);
     epoch.current++;
     try {
@@ -178,16 +180,26 @@ export function Questions() {
       setBusy(false);
     }
   }
+  async function createPrivateLink() {
+    setBusy(true);
+    setError("");
+    try {
+      const grant = await request("invite", {});
+      setPrivateLink(grant.url);
+      setLinkNotice("Open once within 10 minutes. Keep this link private.");
+    } catch (e) {
+      failure(e);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function generate(origin: "profiles" | "conversation" | "library") {
-    if (
-      await act("recommendations", {
-        origin,
-        targetPlayerId: target || undefined,
-        context,
-        replace: true,
-      })
-    )
-      setTab(origin === "conversation" ? "conversation" : "profiles");
+    await act("recommendations", {
+      origin,
+      targetPlayerId: target || undefined,
+      context,
+      replace: true,
+    });
   }
   async function startListening() {
     const attempt = ++audioEpoch.current;
@@ -328,9 +340,15 @@ export function Questions() {
               </button>
             </div>
           )}
-        {feed?.canControl && !selected && !round && !feed.availableIds.includes(rec.id) && (
-          <p className="muted">Saved from an earlier set. Prepare fresh options above to choose the next prompt.</p>
-        )}
+        {feed?.canControl &&
+          !selected &&
+          !round &&
+          !feed.availableIds.includes(rec.id) && (
+            <p className="muted">
+              Saved from an earlier set. Prepare fresh options above to choose
+              the next prompt.
+            </p>
+          )}
         <small className="question-source">
           {rec.mode === "live"
             ? "Muse suggestion"
@@ -339,13 +357,7 @@ export function Questions() {
       </article>
     );
   }
-  const batches =
-    feed?.batches
-      .filter(
-        (b) => b.origin === (tab === "profiles" ? "profiles" : "conversation"),
-      )
-      .slice()
-      .reverse() || [];
+  const batches = feed?.batches.slice().reverse() || [];
   const archived =
     feed?.history.filter(
       (r) =>
@@ -391,8 +403,8 @@ export function Questions() {
         ) : !feed ? (
           <section className="questions-login">
             <LockKeyhole size={22} />
-            <h1>At the table.</h1>
-            <p>A private view for your Game Master.</p>
+            <h1>Game Master</h1>
+            <p>Your room, live conversation and next prompts.</p>
             {error && (
               <p className="alert" role="alert">
                 {error}
@@ -439,7 +451,7 @@ export function Questions() {
                   {feed.room.readyCount} of {feed.room.playerCount} people
                   ready.{" "}
                   {feed.canControl
-                    ? "Game controls are enabled for testing."
+                    ? "Everything for this gathering, together."
                     : "This is a read-only view."}
                 </p>
               </div>
@@ -456,6 +468,74 @@ export function Questions() {
                 </button>
               </div>
             </div>
+            <nav className="gm-shortcuts" aria-label="Game Master workspace">
+              <a href="#gm-current">Current prompt</a>
+              <a href="#gm-conversation">Live conversation</a>
+              <a href="#gm-suggestions">Next prompts</a>
+              <a href="#roster-heading">Players</a>
+            </nav>
+            {feed.canControl && (
+              <details className="gm-access">
+                <summary>Open on another device</summary>
+                <p className="gm-help">
+                  Create a private Game Master link for the deployed app. Your
+                  player login stays separate. Bookmark /gm on that device after
+                  opening it; access lasts 12 hours.
+                </p>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={createPrivateLink}
+                >
+                  Create private access link
+                </button>
+                {privateLink && (
+                  <div className="gm-access-link">
+                    <label>
+                      Private Game Master link
+                      <input value={privateLink} readOnly />
+                    </label>
+                    <div className="gm-actions">
+                      <button
+                        className="text-button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(privateLink);
+                            setLinkNotice(
+                              "Copied. Open once within 10 minutes.",
+                            );
+                          } catch {
+                            setLinkNotice("Select and copy the link above.");
+                          }
+                        }}
+                      >
+                        Copy link
+                      </button>
+                      <a
+                        className="text-button"
+                        href={privateLink}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open deployed Game Master
+                      </a>
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setPrivateLink("");
+                          setLinkNotice("");
+                        }}
+                      >
+                        Hide link
+                      </button>
+                    </div>
+                    <p className="gm-help" role="status">
+                      {linkNotice}
+                    </p>
+                  </div>
+                )}
+              </details>
+            )}
             <section className="gm-roster" aria-labelledby="roster-heading">
               <div className="feed-section-heading">
                 <h2 id="roster-heading">Everyone here</h2>
@@ -502,145 +582,135 @@ export function Questions() {
                 {feed.notice}
               </p>
             )}
-            {feed.canControl && feed.room.status !== "finished" && (
-              <section
-                className="gm-workbench"
-                aria-labelledby="game-controls-heading"
-              >
-                <h2 id="game-controls-heading">The next prompt</h2>
-                <div className="gm-control-fields">
-                  <label>
-                    Spotlight
-                    <select
-                      value={target}
-                      onChange={(e) => setTarget(e.target.value)}
-                      disabled={busy || !!feed.activeQuestion}
+            <div className="gm-dashboard">
+              {feed.canControl && feed.room.status !== "finished" && (
+                <section
+                  className="gm-workbench"
+                  aria-labelledby="game-controls-heading"
+                >
+                  <h2 id="game-controls-heading">The next prompt</h2>
+                  <div className="gm-control-fields">
+                    <label>
+                      Spotlight
+                      <select
+                        value={target}
+                        onChange={(e) => setTarget(e.target.value)}
+                        disabled={busy || !!feed.activeQuestion}
+                      >
+                        <option value="">Let the game balance turns</option>
+                        {feed.players.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {player.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      A little context{" "}
+                      <span className="optional">optional</span>
+                      <input
+                        value={context}
+                        maxLength={800}
+                        onChange={(e) => setContext(e.target.value)}
+                        placeholder="A relaxed first meeting"
+                      />
+                    </label>
+                  </div>
+                  <div className="gm-actions">
+                    <button
+                      className="primary"
+                      disabled={
+                        busy ||
+                        feed.preparing ||
+                        !!feed.activeQuestion ||
+                        feed.room.readyCount < 3 ||
+                        feed.room.readyCount !== feed.room.playerCount
+                      }
+                      onClick={() => generate("profiles")}
                     >
-                      <option value="">Let the game balance turns</option>
-                      {feed.players.map((player) => (
-                        <option key={player.id} value={player.id}>
-                          {player.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    A little context <span className="optional">optional</span>
-                    <input
-                      value={context}
-                      maxLength={800}
-                      onChange={(e) => setContext(e.target.value)}
-                      placeholder="A relaxed first meeting"
-                    />
-                  </label>
-                </div>
-                <div className="gm-actions">
-                  <button
-                    className="primary"
-                    disabled={
-                      busy ||
-                      feed.preparing ||
-                      !!feed.activeQuestion ||
-                      feed.room.readyCount < 3 ||
-                      feed.room.readyCount !== feed.room.playerCount
-                    }
-                    onClick={() => generate("profiles")}
-                  >
-                    {busy ? "Working…" : "Get three Muse prompts"}
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={
-                      busy ||
-                      feed.preparing ||
-                      !!feed.activeQuestion ||
-                      feed.room.readyCount < 3 ||
-                      feed.room.readyCount !== feed.room.playerCount
-                    }
-                    onClick={() => generate("library")}
-                  >
-                    Use the question library
-                  </button>
-                </div>
-                <p className="gm-help">
-                  Muse generation replaces the current options and uses credits.
-                  The library is free. {feed.conversation.requestCount}/
-                  {feed.conversation.requestLimit} question-generation attempts
-                  used, including repairs.
-                </p>
-              </section>
-            )}
-            {feed.preparing && (
-              <p role="status">Muse is preparing the next questions…</p>
-            )}
-            {feed.room.status === "finished" ? (
-              <p className="questions-empty">This gathering has ended.</p>
-            ) : (
-              <section className="current-question">
-                <div className="feed-section-heading">
-                  <h2>On the table</h2>
-                  <span aria-live="polite">
-                    {feed.activeQuestion
-                      ? `Prompt ${String(feed.activeQuestion.number).padStart(2, "0")}`
-                      : "Waiting for a selection"}
-                  </span>
-                </div>
-                {feed.activeQuestion ? (
-                  <>
-                    {card(feed.activeQuestion.recommendation, true)}
-                    {feed.canControl && (
-                      <div className="gm-round-actions">
-                        <button
-                          className="primary"
-                          disabled={busy}
-                          onClick={() => act("clear", { status: "completed" })}
-                        >
-                          Mark completed
-                        </button>
-                        <button
-                          className="secondary"
-                          disabled={busy}
-                          onClick={() => act("clear", { status: "passed" })}
-                        >
-                          Pass this prompt
-                        </button>
-                        <a
-                          className="text-button"
-                          href="/prompt"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open player view
-                        </a>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="questions-empty">
-                    Your Game Master’s next choice will appear here and on
-                    players’ phones.
+                      {busy ? "Working…" : "Get three Muse prompts"}
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={
+                        busy ||
+                        feed.preparing ||
+                        !!feed.activeQuestion ||
+                        feed.room.readyCount < 3 ||
+                        feed.room.readyCount !== feed.room.playerCount
+                      }
+                      onClick={() => generate("library")}
+                    >
+                      Use the question library
+                    </button>
+                  </div>
+                  <p className="gm-help">
+                    Muse generation replaces the current options and uses
+                    credits. The library is free.{" "}
+                    {feed.conversation.requestCount}/
+                    {feed.conversation.requestLimit} question-generation
+                    attempts used, including repairs.
                   </p>
-                )}
-              </section>
-            )}
-            <nav className="feed-tabs" aria-label="Question sources">
-              <button
-                aria-current={tab === "profiles" ? "page" : undefined}
-                onClick={() => setTab("profiles")}
-              >
-                Profile questions
-              </button>
-              <button
-                aria-current={tab === "conversation" ? "page" : undefined}
-                onClick={() => setTab("conversation")}
-              >
-                Conversation
-              </button>
-            </nav>
-            {tab === "conversation" && (
-              <section className="conversation-feed">
+                </section>
+              )}
+              {feed.preparing && (
+                <p role="status">Muse is preparing the next questions…</p>
+              )}
+              {feed.room.status === "finished" ? (
+                <p className="questions-empty">This gathering has ended.</p>
+              ) : (
+                <section className="current-question" id="gm-current">
+                  <div className="feed-section-heading">
+                    <h2>On the table</h2>
+                    <span aria-live="polite">
+                      {feed.activeQuestion
+                        ? `Prompt ${String(feed.activeQuestion.number).padStart(2, "0")}`
+                        : "Waiting for a selection"}
+                    </span>
+                  </div>
+                  {feed.activeQuestion ? (
+                    <>
+                      {card(feed.activeQuestion.recommendation, true)}
+                      {feed.canControl && (
+                        <div className="gm-round-actions">
+                          <button
+                            className="primary"
+                            disabled={busy}
+                            onClick={() =>
+                              act("clear", { status: "completed" })
+                            }
+                          >
+                            Mark completed
+                          </button>
+                          <button
+                            className="secondary"
+                            disabled={busy}
+                            onClick={() => act("clear", { status: "passed" })}
+                          >
+                            Pass this prompt
+                          </button>
+                          <a
+                            className="text-button"
+                            href="/prompt"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open player view
+                          </a>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="questions-empty">
+                      Your Game Master’s next choice will appear here and on
+                      players’ phones.
+                    </p>
+                  )}
+                </section>
+              )}
+              <section className="conversation-feed" id="gm-conversation">
                 <div className="feed-section-heading">
-                  <h2>From the conversation</h2>
+                  <h2>Live conversation</h2>
                   <span>
                     {feed.conversation.status === "live"
                       ? "Listening"
@@ -977,47 +1047,49 @@ export function Questions() {
                   </p>
                 )}
               </section>
-            )}
-            {!batches.length && tab === "profiles" && (
-              <p className="questions-empty">
-                Questions appear when your Game Master requests the first batch.
-                Opening this page doesn’t use Muse credits.
-              </p>
-            )}
-            {batches.map((batch, i) => (
-              <section className="question-batch" key={batch.id}>
-                <div className="feed-section-heading">
-                  <h2>
-                    {tab === "profiles"
-                      ? "From your people"
-                      : "Suggested questions"}
-                  </h2>
-                  <span>
-                    {batch.createdAt
-                      ? new Date(batch.createdAt).toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })
-                      : "Current suggestions"}{" "}
-                    · Set {batches.length - i}
-                  </span>
-                </div>
-                <div className="question-grid">
-                  {batch.recommendations.map((rec) => card(rec))}
-                </div>
-              </section>
-            ))}
-            {tab === "profiles" && archived.length > 0 && (
-              <section className="question-batch">
-                <h2>Earlier questions</h2>
-                <div className="question-grid">
-                  {archived
-                    .slice()
-                    .reverse()
-                    .map((round) => card(round.recommendation))}
-                </div>
-              </section>
-            )}
+              <div className="gm-suggestions" id="gm-suggestions">
+                {!batches.length && (
+                  <p className="questions-empty">
+                    Questions appear when your Game Master requests the first
+                    batch. Opening this page doesn’t use Muse credits.
+                  </p>
+                )}
+                {batches.map((batch, i) => (
+                  <section className="question-batch" key={batch.id}>
+                    <div className="feed-section-heading">
+                      <h2>
+                        {batch.origin === "conversation"
+                          ? "From the conversation"
+                          : "From your people"}
+                      </h2>
+                      <span>
+                        {batch.createdAt
+                          ? new Date(batch.createdAt).toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : "Current suggestions"}{" "}
+                        · Set {batches.length - i}
+                      </span>
+                    </div>
+                    <div className="question-grid">
+                      {batch.recommendations.map((rec) => card(rec))}
+                    </div>
+                  </section>
+                ))}
+                {archived.length > 0 && (
+                  <section className="question-batch">
+                    <h2>Earlier questions</h2>
+                    <div className="question-grid">
+                      {archived
+                        .slice()
+                        .reverse()
+                        .map((round) => card(round.recommendation))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            </div>
             <footer className="questions-footer">
               <LockKeyhole size={14} />
               <span>

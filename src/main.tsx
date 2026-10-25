@@ -938,7 +938,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
   );
 }
 createRoot(document.getElementById("root")!).render(
-  location.pathname.replace(/\/$/, "") === "/questions" ? (
+  ["/questions", "/gm"].includes(location.pathname.replace(/\/$/, "")) ? (
     <Questions />
   ) : (
     <App />
