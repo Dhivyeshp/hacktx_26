@@ -13,8 +13,10 @@ import {
   speakerHints,
 } from "./conversation";
 import { instagramReady } from "./instagram";
+import { playerRewards, rewardsSnapshot } from "./rewards";
 export function createRoom(db: DB, name: string): Session {
   const room: Session = {
+    rewardGameId: randomUUID(),
     id: randomUUID(),
     code: randomBytes(3).toString("hex").toUpperCase(),
     name,
@@ -48,6 +50,7 @@ export function snapshot(db: DB, s: Session, meId: string): Snapshot {
   return {
     room: roomInfo(s),
     me: s.players.find((p) => p.id === meId)!,
+    rewards: playerRewards(db, s, meId),
     sources: s.sources[meId] || [],
     connected: !!db
       .prepare(
@@ -116,6 +119,7 @@ export function questionsSnapshot(
       : [];
   return {
     schemaVersion: 1,
+    ...(db ? { rewards: rewardsSnapshot(db, s) } : {}),
     room: roomInfo(s),
     players: s.players.map((p) => ({
       id: p.id,

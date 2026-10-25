@@ -11,6 +11,8 @@ import type {
   ConversationState,
 } from "../shared/types";
 export type Session = {
+  rewardGameId?: string;
+  rewardSuggestions?: import("../shared/rewards").RewardSuggestion[];
   id: string;
   code: string;
   name: string;
@@ -52,6 +54,13 @@ export function openDb(
   db.exec(
     "CREATE TABLE IF NOT EXISTS audio_tickets(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL,format TEXT NOT NULL)",
   );
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reward_settings(game_id TEXT PRIMARY KEY,goal INTEGER NOT NULL DEFAULT 40,paused INTEGER NOT NULL DEFAULT 0,celebrated INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS reward_reviews(game_id TEXT NOT NULL,round_id TEXT NOT NULL,awards TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(game_id,round_id));
+    CREATE TABLE IF NOT EXISTS reward_wallets(player_id TEXT PRIMARY KEY,wallet TEXT UNIQUE NOT NULL,encrypted_secret TEXT NOT NULL,registered INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS reward_jobs(game_id TEXT NOT NULL,round_id TEXT NOT NULL,round_no INTEGER NOT NULL,state TEXT NOT NULL,payload TEXT NOT NULL,results TEXT NOT NULL DEFAULT '[]',error TEXT,PRIMARY KEY(game_id,round_id));
+    CREATE TABLE IF NOT EXISTS reward_audit(id TEXT PRIMARY KEY,game_id TEXT NOT NULL,round_id TEXT,kind TEXT NOT NULL,body TEXT NOT NULL,at INTEGER NOT NULL);
+  `);
   return db;
 }
 export type DB = ReturnType<typeof openDb>;

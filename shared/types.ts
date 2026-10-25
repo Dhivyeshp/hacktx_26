@@ -51,6 +51,7 @@ export type RoomInfo = {
 };
 /** Player-only data. No recommendation queue or other players' private profiles. */
 export type Snapshot = {
+  rewards?: import("./rewards").PlayerRewards;
   room: RoomInfo;
   me: Player;
   sources: Source[];
@@ -118,6 +119,7 @@ export type ConversationState = {
   notice?: string;
 };
 export type QuestionsSnapshot = {
+  rewards?: import("./rewards").RewardsSnapshot;
   schemaVersion: 1;
   room: RoomInfo;
   players: {

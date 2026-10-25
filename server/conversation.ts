@@ -87,6 +87,7 @@ export function conversationInput(s: Session) {
       speakerLabel: segment.speakerLabel,
       playerId: c.speakerLinks[segment.speakerLabel || ""],
       origin: segment.origin,
+      roundId: segment.roundId,
     })),
   };
 }

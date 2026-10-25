@@ -929,7 +929,12 @@ test("private question batches survive selection and restart without exposing im
   assert.deepEqual(
     JSON.parse(
       JSON.stringify(
-        questionsSnapshot(getSession(reopened, room.id)!, false, true),
+        questionsSnapshot(
+          getSession(reopened, room.id)!,
+          false,
+          true,
+          reopened,
+        ),
       ),
     ),
     feed.body,
@@ -1199,6 +1204,9 @@ test("GM control cookies are explicit, room scoped, and cannot be obtained from 
     "audio-ticket",
     "reset",
     "invite",
+    "rewards/approve",
+    "rewards/settings",
+    "rewards/settle",
   ]) {
     assert.equal(
       (await request(`/questions/${op}`, {}, read.cookie)).status,
@@ -1504,6 +1512,12 @@ test("a successful conversation request returns grounded prompts and a summary i
     );
   }
   const s = getSession(db, created.body.room.id)!;
+  s.rounds.push({
+    id: "scored-round",
+    number: 1,
+    status: "completed",
+    recommendation: fallback(s)[0],
+  });
   const original = globalThis.fetch;
   process.env.MODEL_API_KEY = "fake";
   let calls = 0;
@@ -1517,6 +1531,15 @@ test("a successful conversation request returns grounded prompts and a summary i
               content: JSON.stringify({
                 summary:
                   "The table discussed pottery and making things together.",
+                rewardSuggestions: [
+                  {
+                    roundId: "scored-round",
+                    playerId: s.players[0].id,
+                    criterion: "followup",
+                    evidenceIds: ["heard-1"],
+                    reason: "Asked a specific follow-up about the bowl.",
+                  },
+                ],
                 recommendations: fallback(s).map((rec) => ({
                   ...rec,
                   transcriptIds: ["heard-1"],
@@ -1534,10 +1557,14 @@ test("a successful conversation request returns grounded prompts and a summary i
           id: "heard-1",
           text: "We were making bowls together.",
           speakerLabel: "Speaker A",
+          playerId: s.players[0].id,
+          roundId: "scored-round",
+          origin: "microphone",
         },
       ],
     });
     assert.equal(calls, 1);
+    assert.equal(r.rewardSuggestions.length, 1);
     assert.equal(
       r.summary,
       "The table discussed pottery and making things together.",
@@ -1547,6 +1574,21 @@ test("a successful conversation request returns grounded prompts and a summary i
         (rec) => rec.mode === "live" && rec.transcriptIds?.includes("heard-1"),
       ),
     );
+    for (const origin of ["test", "microphone"]) {
+      const anonymous = await recommend(s, undefined, {
+        summary: "",
+        segments: [
+          {
+            id: "heard-1",
+            text: "What inspired that bowl?",
+            origin,
+            roundId: "scored-round",
+          },
+        ],
+      });
+      assert.equal(anonymous.rewardSuggestions.length, 0);
+      assert.ok(anonymous.recommendations.every((rec) => rec.mode === "live"));
+    }
   } finally {
     globalThis.fetch = original;
     delete process.env.MODEL_API_KEY;

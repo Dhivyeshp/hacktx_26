@@ -36,6 +36,7 @@ import {
   reserveSessionRequest,
 } from "./conversation";
 import { createAudioBridge } from "./audio";
+import { createRewardEngine } from "./rewards";
 import type { RoomEvent, Source } from "../shared/types";
 const cookie = "centerpiece";
 const text = z.string().trim().min(1).max(60);
@@ -56,6 +57,7 @@ export function createApp(db = openDb()) {
   const app = express();
   configureConversationBudget(db);
   const audio = createAudioBridge(db);
+  const rewards = createRewardEngine(db);
   const generating = new Set<string>();
   const analyzingProfiles = new Set<string>();
   app.set("trust proxy", 1);
@@ -715,6 +717,9 @@ export function createApp(db = openDb()) {
       "/api/questions/clear",
       "/api/questions/finish",
       "/api/questions/reset",
+      "/api/questions/rewards/approve",
+      "/api/questions/rewards/settings",
+      "/api/questions/rewards/settle",
       "/api/questions/conversation",
       "/api/questions/transcript",
       "/api/questions/speaker",
@@ -857,6 +862,7 @@ export function createApp(db = openDb()) {
         const result =
           input.origin === "library"
             ? {
+                rewardSuggestions: [],
                 recommendations: fallback(s, input.targetPlayerId),
                 notice: "From the question library. No Muse request was made.",
                 summary: undefined,
@@ -876,6 +882,10 @@ export function createApp(db = openDb()) {
           return res.status(409).json({
             error: "The room changed. Request fresh recommendations.",
           });
+        current.rewardSuggestions = [
+          ...(current.rewardSuggestions || []),
+          ...(result.rewardSuggestions || []),
+        ].slice(-100);
         current.recommendations = result.recommendations;
         current.notice = result.notice;
         current.suggestionBatches ??= [];
@@ -995,6 +1005,10 @@ export function createApp(db = openDb()) {
               }) !== baseline
             )
               return;
+            current.rewardSuggestions = [
+              ...(current.rewardSuggestions || []),
+              ...(result.rewardSuggestions || []),
+            ].slice(-100);
             current.recommendations = result.recommendations;
             current.notice = result.notice;
             current.suggestionBatches ??= [];
@@ -1024,6 +1038,7 @@ export function createApp(db = openDb()) {
       const s = room(req);
       if (
         generating.has(s.id) ||
+        rewards.isSettling(s) ||
         s.players.some((p) => analyzingProfiles.has(p.id))
       )
         return res.status(409).json({
@@ -1032,6 +1047,7 @@ export function createApp(db = openDb()) {
         });
       audio.stop(s.id);
       const fresh: Session = {
+        rewardGameId: randomUUID(),
         id: s.id,
         code: s.code,
         name: s.name,
@@ -1044,6 +1060,7 @@ export function createApp(db = openDb()) {
         context: "",
       };
       db.transaction(() => {
+        rewards.archive(s);
         for (const table of [
           "credentials",
           "connections",
@@ -1056,6 +1073,44 @@ export function createApp(db = openDb()) {
         touch(fresh, "game.reset");
       })();
       res.json({ ok: true });
+    }),
+  );
+  app.post(
+    [
+      "/api/questions/rewards/approve",
+      "/api/control/rooms/:code/rewards/approve",
+    ],
+    wrap((req, res) => {
+      const s = room(req);
+      rewards.approve(s, req.body);
+      touch(s, "rewards.approved");
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    [
+      "/api/questions/rewards/settings",
+      "/api/control/rooms/:code/rewards/settings",
+    ],
+    wrap((req, res) => {
+      const s = room(req);
+      rewards.configure(s, req.body);
+      touch(s, "rewards.settings");
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    [
+      "/api/questions/rewards/settle",
+      "/api/control/rooms/:code/rewards/settle",
+    ],
+    wrap((req, res) => {
+      const s = room(req);
+      rewards.settle(s, req.body, () => {
+        const current = getSession(db, s.id);
+        if (current) touch(current, "rewards.settled");
+      });
+      res.status(202).json({ ok: true });
     }),
   );
   app.post(
@@ -1196,6 +1251,7 @@ export function createApp(db = openDb()) {
     });
   });
   return {
+    rewards,
     app,
     db,
     audio,

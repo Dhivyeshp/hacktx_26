@@ -22,6 +22,7 @@
     "tina:audio": "tsx scripts/tina-audio.ts"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.99.0",
     "better-sqlite3": "^11.8.1",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.7",
