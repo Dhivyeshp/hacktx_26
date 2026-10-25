@@ -240,7 +240,7 @@ a suggested speaker name that the GM must confirm. Muse can prepare a bounded
 batch from recent conversation between turns. See [live conversation setup](docs/live-conversation.md)
 and [the feed interface](docs/questions-feed.md).
 
-Player navigation contains Profile and Prompt. The profile footer offers Reset profile, which clears the Instagram connection, OAuth attempts, imported text and interests while keeping the player name and room. Previously shared questions stay in room history. Imported text is explained alongside the Instagram connection and can be expanded to review the original bio and captions.
+The profile screen has no Prompt tab. NFC tags open `/prompt` directly to show the GM selection. The profile footer offers Reset profile, which clears the Instagram connection, OAuth attempts, imported text and interests while keeping the player name and room. Previously shared questions stay in room history. Imported text is explained alongside the Instagram connection and can be expanded to review the original bio and captions.
 
 See [remaining work](docs/remaining-work.md) for the integration and deployment checklist.
 

@@ -341,12 +341,6 @@ function App() {
               >
                 Profile
               </button>
-              <a
-                className={view === "capsule" ? "selected" : ""}
-                href="/prompt"
-              >
-                Prompt
-              </a>
               <span className="player-name">
                 {s.me.name}
                 <span className="avatar">{s.me.name[0].toUpperCase()}</span>
