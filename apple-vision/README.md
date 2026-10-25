@@ -1,10 +1,20 @@
 # Centerpiece · Vision Pro
 
-A compact native visionOS overlay for the robot camera: photo avatars and player-specific questions on the left, a transcript on the right, and a clear central view. There is no bottom dock or drop-position marker. Selecting **Ready to drive** swaps the question panel for small driving/drop controls.
+A full immersive visionOS app with a compact overlay for the robot camera: photo avatars and player-specific questions on the left, a transcript on the right, and a clear central view. There is no bottom dock or drop-position marker. Selecting **Ready to drive** swaps the question panel for small driving/drop controls.
 
 ## Open the right project
 
-Open `Centerpiece.xcodeproj` **from this checkout**, select the Centerpiece scheme and your paired Vision Pro, select your signing team, and Run. This project requires visionOS 2 or newer and Xcode's visionOS support. The current Codex worktree is separate from the original checkout; changes here do not automatically appear in the other Xcode project window.
+Open `Centerpiece.xcodeproj` **from this checkout**, select the Centerpiece scheme and your paired Vision Pro, select your signing team, and Run. On first launch, the app automatically requests a full immersive space and hides its small launcher window after the space opens. This project requires visionOS 2 or newer and Xcode's visionOS support. The current Codex worktree is separate from the original checkout; changes here do not automatically appear in the other Xcode project window.
+
+## Immersive presentation
+
+The app starts in **full immersion**: passthrough and other apps are hidden. A large camera screen with the player/question/transcript overlay is positioned in front of the wearer. The screen is initialized at head height and remains still so you can look toward either side panel. The Pi feed is still a normal 2D camera image; this is a wide theater-style presentation, not 360-degree video.
+
+- **Exit immersive** in the top bar returns to the small launcher window.
+- **Enter immersive view** opens the space again. Video source settings and the selected player/question are retained.
+- If opening is canceled or fails, the launcher explains what happened and offers retry.
+- A system dismissal also restores the launcher and stops/disarms motion. It does not automatically reopen until you request it.
+- Camera settings and the shared-page preview open as panels inside the immersive dashboard.
 
 ## Add the relay token
 
@@ -36,7 +46,7 @@ If live video stalls for three seconds, the last frame dims, the UI reports the 
 
 ## Hand gestures
 
-Driving uses visionOS’s built-in system gestures in the regular app window. No immersive space or hand-tracking permission is required.
+Driving uses visionOS’s built-in system gestures inside the immersive dashboard. Raw hand-position tracking has not been added; the existing pinch-and-drag control still targets the puck.
 
 - Look at the mint puck, pinch, and drag upward to drive forward. Drag sideways to turn, or diagonally to do both. Either hand works.
 - Hold the pinch to maintain the command; release to stop. A small center dead zone prevents unintended drift. Wheel commands are bounded to 60 percent.
@@ -53,7 +63,7 @@ These are SwiftUI `DragGesture` and `LongPressGesture` interactions, using the s
 - `DashboardView.swift`: compact glass panels, photo crops, live/demo background, transcript and controls.
 - `RelayClient.swift`: relay configuration and receive-only WebSocket client.
 - `DemoSession.swift`: local selection, movement and update-before-dispense state machine.
-- `CenterpieceApp.swift`: shared session and regular app window.
+- `CenterpieceApp.swift`: full immersive scene, automatic launch, shared video settings, and exit/recovery window.
 - `RobotControls.swift`: native pinch-and-drag puck and pinch-and-hold drop control.
 - `Scripts/build_relay_config.py`: allowlisted `.env` → generated app configuration.
 
@@ -73,3 +83,7 @@ python3 Tests/relay_fixture.py /tmp/centerpiece-relay-checks
 The WebSocket fixture checks the real Swift client over localhost, including auth header/room, JPEG decoding, malformed frames, stale video, reconnect, and cancellation. It is not a test of Render credentials, Pi streaming, or headset performance.
 
 [Actual simulator screenshot of the compact layout](docs/ui-preview.png)
+
+[Actual simulator screenshot of the immersive view](docs/immersive-preview.png)
+
+The immersive build was compiled and launched in visionOS Simulator. Automatic entry, hiding the launcher, full-immersion rendering, and the visible exit control were confirmed. Physical headset interaction and the live Pi feed still need device validation.
