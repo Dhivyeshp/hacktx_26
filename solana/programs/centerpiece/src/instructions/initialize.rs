@@ -26,6 +26,9 @@ pub struct Initialize<'info> {
         mint::token_program = token_program,
         extensions::metadata_pointer::authority = mint_auth,
         extensions::metadata_pointer::metadata_address = coin_mint,
+        // Lets the program move or burn TABLE for kudos and shop redemptions,
+        // which custodial players can't sign for. Only program rules can use it.
+        extensions::permanent_delegate::delegate = mint_auth,
     )]
     pub coin_mint: InterfaceAccount<'info, Mint>,
 
@@ -39,6 +42,7 @@ pub fn handle_initialize(
     symbol: String,
     uri: String,
     max_award_per_round: u64,
+    max_kudos: u64,
 ) -> Result<()> {
     require!(name.len() <= MAX_NAME_LEN, CenterpieceError::StringTooLong);
     require!(symbol.len() <= MAX_SYMBOL_LEN, CenterpieceError::StringTooLong);
@@ -48,8 +52,10 @@ pub fn handle_initialize(
     config.admin = ctx.accounts.admin.key();
     config.coin_mint = ctx.accounts.coin_mint.key();
     config.max_award_per_round = max_award_per_round;
+    config.max_kudos = max_kudos;
     config.keepsake_count = 0;
     config.player_count = 0;
+    config.item_count = 0;
     config.bump = ctx.bumps.config;
     config.mint_auth_bump = ctx.bumps.mint_auth;
 

@@ -1,5 +1,6 @@
 // Pays a player for one round: mints TABLE coin to their wallet, adds xp and
-// connections to their profile, and rewrites the live fields on their badge.
+// connections to their profile, rewrites the live fields on their badge, and
+// (when the session has a table goal) fills the shared pot.
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{mint_to, Mint, MintTo, Token2022, TokenAccount};
@@ -7,8 +8,9 @@ use anchor_spl::token_interface::{mint_to, Mint, MintTo, Token2022, TokenAccount
 use crate::{
     constants::*,
     error::CenterpieceError,
-    state::{Award, Config, Player, Round},
-    token_meta::*,
+    progress::{self, Badge},
+    state::{Award, Config, Player, Round, Session},
+    token_meta::MetaAccounts,
 };
 
 #[event]
@@ -21,20 +23,32 @@ pub struct Awarded {
     pub leveled_up: bool,
 }
 
+#[event]
+pub struct TableGoalReached {
+    pub session: Pubkey,
+    pub session_id: [u8; 16],
+    pub goal: u64,
+    pub pot: u64,
+}
+
 #[derive(Accounts)]
 pub struct AwardPlayer<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
     #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = admin, has_one = coin_mint)]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
 
     #[account(
         mut,
         seeds = [ROUND_SEED, round.session_id.as_ref(), &round.round_no.to_le_bytes()],
         bump = round.bump
     )]
-    pub round: Account<'info, Round>,
+    pub round: Box<Account<'info, Round>>,
+
+    /// The round's session, when it has a table goal. Omit for sessions without one.
+    #[account(mut, seeds = [SESSION_SEED, round.session_id.as_ref()], bump = session.bump)]
+    pub session: Option<Box<Account<'info, Session>>>,
 
     /// CHECK: the player's wallet; must match the Player PDA seeds.
     pub wallet: UncheckedAccount<'info>,
@@ -46,7 +60,7 @@ pub struct AwardPlayer<'info> {
         has_one = wallet,
         has_one = badge_mint
     )]
-    pub player: Account<'info, Player>,
+    pub player: Box<Account<'info, Player>>,
 
     /// One receipt per (round, wallet): a second award for the same round fails here.
     #[account(
@@ -56,10 +70,10 @@ pub struct AwardPlayer<'info> {
         seeds = [AWARD_SEED, round.key().as_ref(), wallet.key().as_ref()],
         bump
     )]
-    pub award: Account<'info, Award>,
+    pub award: Box<Account<'info, Award>>,
 
     #[account(mut)]
-    pub coin_mint: InterfaceAccount<'info, Mint>,
+    pub coin_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         init_if_needed,
@@ -68,7 +82,7 @@ pub struct AwardPlayer<'info> {
         associated_token::authority = wallet,
         associated_token::token_program = token_program,
     )]
-    pub wallet_coin_account: InterfaceAccount<'info, TokenAccount>,
+    pub wallet_coin_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// CHECK: the player's badge mint, checked by `has_one = badge_mint` on `player`.
     #[account(mut)]
@@ -108,15 +122,19 @@ pub fn handle_award_player(ctx: Context<AwardPlayer>, points: u64, connections: 
         )?;
     }
 
-    let player = &mut ctx.accounts.player;
-    player.xp = player.xp.checked_add(points).ok_or(CenterpieceError::Overflow)?;
-    player.coins_earned = player.coins_earned.checked_add(points).ok_or(CenterpieceError::Overflow)?;
-    player.connections = player.connections.checked_add(connections).ok_or(CenterpieceError::Overflow)?;
-    player.rounds_played = player.rounds_played.checked_add(1).ok_or(CenterpieceError::Overflow)?;
-    let new_level = level_for_xp(player.xp);
-    let leveled_up = new_level != player.level;
-    player.level = new_level;
-    let (xp, total_connections) = (player.xp, player.connections);
+    if let Some(session) = ctx.accounts.session.as_mut() {
+        session.pot = session.pot.checked_add(points).ok_or(CenterpieceError::Overflow)?;
+        if !session.reached && session.pot >= session.goal {
+            session.reached = true;
+            session.reached_at = Clock::get()?.unix_timestamp;
+            emit!(TableGoalReached {
+                session: session.key(),
+                session_id: session.session_id,
+                goal: session.goal,
+                pot: session.pot,
+            });
+        }
+    }
 
     let award = &mut ctx.accounts.award;
     award.round = ctx.accounts.round.key();
@@ -126,23 +144,25 @@ pub fn handle_award_player(ctx: Context<AwardPlayer>, points: u64, connections: 
     award.bump = ctx.bumps.award;
 
     let token_program = ctx.accounts.token_program.to_account_info();
-    let badge = ctx.accounts.badge_mint.to_account_info();
+    let badge_mint = ctx.accounts.badge_mint.to_account_info();
     let admin = ctx.accounts.admin.to_account_info();
-    let meta = MetaAccounts { token_program: &token_program, mint: &badge, authority: &mint_auth, signer_seeds: auth_seeds };
-    update_field(&meta, &admin, "xp", xp.to_string())?;
-    if connections > 0 {
-        update_field(&meta, &admin, "connections", total_connections.to_string())?;
-    }
-    if leveled_up {
-        update_field(&meta, &admin, "level", new_level.to_string())?;
-    }
+    let badge = Badge {
+        meta: MetaAccounts { token_program: &token_program, mint: &badge_mint, authority: &mint_auth, signer_seeds: auth_seeds },
+        payer: &admin,
+    };
+
+    let player = &mut ctx.accounts.player;
+    player.rounds_played = player.rounds_played.checked_add(1).ok_or(CenterpieceError::Overflow)?;
+    let leveled_up = progress::add_xp(player, &badge, points)?;
+    progress::add_connections(player, &badge, connections)?;
+    progress::refresh(player, &badge)?;
 
     emit!(Awarded {
-        wallet: ctx.accounts.wallet.key(),
+        wallet: player.wallet,
         round: ctx.accounts.round.key(),
         points,
-        xp,
-        level: new_level,
+        xp: player.xp,
+        level: player.level,
         leveled_up,
     });
     Ok(())

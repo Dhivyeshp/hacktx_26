@@ -78,6 +78,8 @@ pub fn handle_register_player(ctx: Context<RegisterPlayer>, uri: String) -> Resu
         ("level", "1".to_string()),
         ("xp", "0".to_string()),
         ("connections", "0".to_string()),
+        ("kudos", "0".to_string()),
+        ("achievements", "0".to_string()),
     ];
     let mint_len = ExtensionType::try_calculate_account_len::<PodMint>(&[
         ExtensionType::NonTransferable,
@@ -160,6 +162,11 @@ pub fn handle_register_player(ctx: Context<RegisterPlayer>, uri: String) -> Resu
     player.coins_earned = 0;
     player.connections = 0;
     player.rounds_played = 0;
+    player.kudos_given = 0;
+    player.kudos_received = 0;
+    player.achievements = 0;
+    player.keepsakes = 0;
+    player.redemptions = 0;
     player.level = 1;
     player.bump = ctx.bumps.player;
 

@@ -10,7 +10,8 @@
     "chain:test": "solana/scripts/test-local.sh",
     "chain:init": "npm run -w @centerpiece/chain init",
     "chain:smoke": "npm run -w @centerpiece/chain smoke",
-    "chain:serve": "npm run -w @centerpiece/chain serve"
+    "chain:serve": "npm run -w @centerpiece/chain serve",
+    "chain:seed-shop": "npm run -w @centerpiece/chain seed-shop"
   },
   "devDependencies": {
     "tsx": "^4.23.15",

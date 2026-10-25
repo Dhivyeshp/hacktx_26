@@ -6,7 +6,8 @@
   "description": "TypeScript client and HTTP service for the centerpiece Anchor program",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts"
   },
   "scripts": {
     "sync-idl": "cp ../target/idl/centerpiece.json src/idl/centerpiece.json && cp ../target/types/centerpiece.ts src/idl/centerpiece.ts",
@@ -14,10 +15,12 @@
     "smoke": "tsx scripts/smoke.ts",
     "serve": "tsx src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "seed-shop": "tsx scripts/seed-shop.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.2.1",
+    "@noble/hashes": "^1.8.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.4",
     "tsx": "^4.23.15"
