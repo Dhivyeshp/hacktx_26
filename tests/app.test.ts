@@ -1713,3 +1713,58 @@ test("solo prompt assignments suggest a speaker but require explicit GM confirma
     400,
   );
 });
+
+test("explicit demo mode opens one GM game and joins players without codes; normal mode stays private", async () => {
+  const made = await request(
+    "/control/rooms",
+    { name: "Open demo test" },
+    "",
+    true,
+  );
+  const demoCode = made.body.room.code;
+  process.env.DEMO_MODE = "true";
+  process.env.DEMO_ROOM_CODE = demoCode;
+  const demoApp = createApp(db).app;
+  delete process.env.DEMO_MODE;
+  delete process.env.DEMO_ROOM_CODE;
+  const demoServer = createServer(demoApp);
+  demoServer.listen(0, "127.0.0.1");
+  await once(demoServer, "listening");
+  const origin = `http://127.0.0.1:${(demoServer.address() as any).port}`;
+  try {
+    const config = await fetch(origin + "/api/demo").then((r) => r.json());
+    assert.equal(config.enabled, true);
+    assert.equal(config.room.code, demoCode);
+    const feed = await fetch(
+      origin + "/api/questions/session?room=ZZZZZZ",
+    ).then((r) => r.json());
+    assert.equal(feed.canControl, true);
+    assert.equal(feed.room.code, demoCode);
+    const joined = await fetch(origin + "/api/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Demo player" }),
+    });
+    assert.equal(joined.status, 200);
+    assert.equal((await joined.json()).room.code, demoCode);
+    const added = await fetch(origin + "/api/questions/transcript", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "demo-segment",
+        text: "A sample conversation",
+      }),
+    });
+    assert.equal(added.status, 200);
+    assert.equal(
+      getSession(db, demoCode)!.conversation!.segments[0].text,
+      "A sample conversation",
+    );
+    const privateConfig = await request("/demo");
+    assert.equal(privateConfig.body.enabled, false);
+    assert.equal((await request("/questions/session")).status, 401);
+  } finally {
+    demoServer.closeAllConnections();
+    await new Promise<void>((resolve) => demoServer.close(() => resolve()));
+  }
+});

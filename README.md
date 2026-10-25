@@ -200,6 +200,15 @@ connection/privacy details are collapsed, and save actions remain at
 the bottom with safe-area spacing. Imported text and question explanations stay
 available through disclosures.
 
+### Single-game demo
+
+With `DEMO_MODE=true` and `DEMO_ROOM_CODE` set to an existing room, `/gm` opens
+Game Master controls without a key, `/join` onboards into the shared demo without
+a room code, and `/prompt` shows the selected prompt. Anyone with `/gm` can view
+transcripts and control this demo, including paid generation. Existing caps and
+recording consent still apply. Disable demo mode and restart to restore private
+GM access. Room identifiers remain internal; existing profiles are preserved.
+
 ### Shared NFC link and private questions
 
 Write **`https://your-domain/prompt`** onto every NFC tag. Existing `/relic` and `/c` tags redirect to `/prompt`. The link uses the phone’s joined room and always reads that room’s

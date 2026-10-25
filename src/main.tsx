@@ -57,6 +57,7 @@ function App() {
   const fromChip = ["/c", "/relic", "/prompt"].includes(
     location.pathname.replace(/\/$/, ""),
   );
+  const [demo, setDemo] = useState(false);
   const [s, setS] = useState<Snapshot | null>(null),
     [loaded, setLoaded] = useState(false),
     [view, setView] = useState<"profile" | "capsule">(
@@ -81,18 +82,20 @@ function App() {
     let stopped = false;
     (async () => {
       try {
+        const config = await api("/demo");
+        if (stopped) return;
+        setDemo(config.enabled);
+        const targetCode = config.enabled ? config.room.code : requestedRoom;
+        if (config.enabled) setCode(config.room.code);
         const [session, target] = await Promise.all([
           api("/session").catch(() => null),
-          requestedRoom
-            ? api("/rooms/" + encodeURIComponent(requestedRoom))
+          targetCode
+            ? api("/rooms/" + encodeURIComponent(targetCode))
             : Promise.resolve(null),
         ]);
         if (stopped) return;
         if (target) setRoom(target);
-        if (
-          session &&
-          (!requestedRoom || session.room.code === requestedRoom)
-        ) {
+        if (session && (!targetCode || session.room.code === targetCode)) {
           accept(session);
           if (!fromChip) setView("profile");
         } else if (session) setName(session.me.name);
@@ -183,7 +186,7 @@ function App() {
               <span className={ended ? "dot ended" : "dot"} />
               <span>
                 {s.room.name}
-                <small>ROOM {s.room.code}</small>
+                {!demo && <small>ROOM {s.room.code}</small>}
               </span>
             </div>
           )}
@@ -242,13 +245,18 @@ function App() {
                 <div className="room-label">
                   <span className="dot" />
                   {room.playerCount} of 6 players joined
-                  <span>ROOM {room.code}</span>
+                  {!demo && <span>ROOM {room.code}</span>}
                 </div>
               )}
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (await run("join", "/join", { name, code })) {
+                  if (
+                    await run("join", "/join", {
+                      name,
+                      ...(demo ? {} : { code }),
+                    })
+                  ) {
                     setView("profile");
                   }
                 }}
@@ -264,7 +272,7 @@ function App() {
                     placeholder="What should we call you?"
                   />
                 </label>
-                {!room && (
+                {!room && !demo && (
                   <label>
                     Room code
                     <input
@@ -301,7 +309,7 @@ function App() {
                     : "You choose which interests the game uses."}
                 </p>
               </div>
-              {!requestedRoom && (
+              {!requestedRoom && !demo && (
                 <p className="scan-note">
                   Tina’s QR code takes you straight to your room.
                 </p>

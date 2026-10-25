@@ -24,6 +24,7 @@ async function request(
 }
 export function Questions() {
   const room = new URLSearchParams(location.search).get("room") || "";
+  const [demo, setDemo] = useState(false);
   const [feed, setFeed] = useState<QuestionsSnapshot | null>(null);
   const [loaded, setLoaded] = useState(false),
     [busy, setBusy] = useState(false);
@@ -87,11 +88,20 @@ export function Questions() {
     let stopped = false;
     (async () => {
       try {
-        const next = token
-          ? await request("access", { token })
-          : await request(
-              `session${room ? `?room=${encodeURIComponent(room)}` : ""}`,
-            );
+        const config = await fetch("/api/demo", { cache: "no-store" }).then(
+          (r) => {
+            if (!r.ok)
+              throw new Error("The demo could not be opened. Please refresh.");
+            return r.json();
+          },
+        );
+        if (!stopped) setDemo(config.enabled);
+        const next =
+          token && !config.enabled
+            ? await request("access", { token })
+            : await request(
+                `session${room ? `?room=${encodeURIComponent(room)}` : ""}`,
+              );
         if (!stopped) accept(next);
       } catch (e: any) {
         if (!stopped) {
@@ -444,7 +454,9 @@ export function Questions() {
             <div className="questions-heading">
               <div>
                 <span className="eyebrow">
-                  GAME MASTER · ROOM {feed.room.code}
+                  {demo
+                    ? "GAME MASTER · DEMO"
+                    : `GAME MASTER · ROOM ${feed.room.code}`}
                 </span>
                 <h1>{feed.room.name}</h1>
                 <p>
@@ -459,13 +471,15 @@ export function Questions() {
                 <button className="text-button" onClick={() => void refresh()}>
                   <RefreshCw size={16} /> Refresh
                 </button>
-                <button
-                  className="text-button"
-                  disabled={busy}
-                  onClick={logout}
-                >
-                  Close private view
-                </button>
+                {!demo && (
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={logout}
+                  >
+                    Close private view
+                  </button>
+                )}
               </div>
             </div>
             <nav className="gm-shortcuts" aria-label="Game Master workspace">
@@ -474,7 +488,7 @@ export function Questions() {
               <a href="#gm-suggestions">Next prompts</a>
               <a href="#roster-heading">Players</a>
             </nav>
-            {feed.canControl && (
+            {feed.canControl && !demo && (
               <details className="gm-access">
                 <summary>Open on another device</summary>
                 <p className="gm-help">
@@ -535,6 +549,20 @@ export function Questions() {
                   </div>
                 )}
               </details>
+            )}
+            {demo && (
+              <p className="gm-help">
+                One shared demo. Players join at{" "}
+                <a href="/join" target="_blank" rel="noreferrer">
+                  /join
+                </a>{" "}
+                and open their question at{" "}
+                <a href="/prompt" target="_blank" rel="noreferrer">
+                  /prompt
+                </a>
+                . Anyone with /gm can view this conversation and control the
+                game.
+              </p>
             )}
             <section className="gm-roster" aria-labelledby="roster-heading">
               <div className="feed-section-heading">
@@ -1093,7 +1121,7 @@ export function Questions() {
             <footer className="questions-footer">
               <LockKeyhole size={14} />
               <span>
-                Private view ·{" "}
+                {demo ? "Demo view" : "Private view"} ·{" "}
                 {updated
                   ? `Updated ${new Date(updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
                   : "Connecting"}

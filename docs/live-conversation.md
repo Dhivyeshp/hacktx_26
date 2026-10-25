@@ -4,6 +4,21 @@ Open a room's private GM link with control permission. Create one with
 `npm run questions:link -- ROOM --control --file`, then open the URL saved in
 `data/questions-access-link.txt`. Keep that link private. Default links are read-only.
 
+## Single-game demo
+
+For a public rehearsal, set `DEMO_MODE=true` and `DEMO_ROOM_CODE` to an existing
+room, then restart. `/gm` opens all controls without a key. `/join` and `/` ask
+only for a name and onboard players into that same game. `/prompt` still uses
+the phone's player session so private missions reach the assigned person.
+No room code is displayed or entered in the demo interface. The room identifier
+remains internal for persistence and integration. Existing profiles are preserved.
+
+Everyone who knows `/gm` can read the transcript, generate paid prompts and
+control the demo. Recording still requires consent; model and audio caps remain.
+Turn demo mode off and restart before using the private access workflow below.
+Demo mode is off by default in `.env.example` and never exposes bearer control
+API credentials or Instagram tokens. Six players remains the game limit.
+
 ## Opening the deployed Game Master
 
 Bookmark `https://your-domain/gm` after signing in. `/questions` remains supported.

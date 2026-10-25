@@ -40,6 +40,16 @@ import type { RoomEvent, Source } from "../shared/types";
 const cookie = "centerpiece";
 const text = z.string().trim().min(1).max(60);
 export function createApp(db = openDb()) {
+  const demoMode = process.env.DEMO_MODE === "true";
+  const demoCode = process.env.DEMO_ROOM_CODE?.trim().toUpperCase();
+  function demoRoom() {
+    const s = demoCode && getSession(db, demoCode);
+    if (!s)
+      throw Object.assign(new Error("The demo game is not configured yet."), {
+        status: 503,
+      });
+    return s;
+  }
   db.prepare("DELETE FROM connections WHERE expires_at<?").run(Date.now());
   db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
   const app = express();
@@ -194,6 +204,16 @@ export function createApp(db = openDb()) {
     return current;
   }
   app.get(
+    "/api/demo",
+    wrap((_req, res) => {
+      res.json(
+        demoMode
+          ? { enabled: true, room: roomInfo(demoRoom()) }
+          : { enabled: false },
+      );
+    }),
+  );
+  app.get(
     "/api/rooms/:code",
     wrap((req, res) => {
       const s = room(req);
@@ -215,8 +235,12 @@ export function createApp(db = openDb()) {
   app.post(
     "/api/join",
     wrap((req, res) => {
-      const input = z.object({ code: text, name: text }).parse(req.body);
-      const s = getSession(db, input.code);
+      const input = z
+        .object({ code: text.optional(), name: text })
+        .parse(req.body);
+      const s = demoMode
+        ? demoRoom()
+        : input.code && getSession(db, input.code);
       if (!s)
         return res
           .status(404)
@@ -555,6 +579,7 @@ export function createApp(db = openDb()) {
     });
   }
   function questionsRoom(req: Request, write = false) {
+    if (demoMode) return demoRoom();
     const token = req.cookies[questionsCookie];
     const record =
       typeof token === "string"
@@ -589,7 +614,7 @@ export function createApp(db = openDb()) {
     return questionsSnapshot(
       s,
       generating.has(s.id),
-      record?.permission === "control",
+      demoMode || record?.permission === "control",
       db,
     );
   }
@@ -653,7 +678,11 @@ export function createApp(db = openDb()) {
     "/api/questions/session",
     wrap((req, res) => {
       const s = questionsRoom(req);
-      if (req.query.room && String(req.query.room).toUpperCase() !== s.code)
+      if (
+        !demoMode &&
+        req.query.room &&
+        String(req.query.room).toUpperCase() !== s.code
+      )
         return res.status(403).json({
           error:
             "Your access is for another room. Open its private link or sign in again.",
