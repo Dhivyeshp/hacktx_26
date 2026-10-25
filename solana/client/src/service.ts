@@ -97,18 +97,28 @@ export function createService(chain: ChainClient) {
     const method = req.method ?? 'GET'
 
     if (method === 'OPTIONS') return send(res, 204, '')
-    if (url.pathname === '/healthz' || url.pathname === '/') {
-      const config = await chain.getConfig()
-      return send(res, 200, {
-        ok: true,
+    // Liveness only: Render polls this every few seconds, so it must not touch the RPC.
+    if (url.pathname === '/healthz') return send(res, 200, { ok: true })
+    if (url.pathname === '/status' || url.pathname === '/') {
+      const base = {
         cluster: chain.cluster,
+        rpc: new URL(chain.connection.rpcEndpoint).host,
         programId: chain.programId.toBase58(),
         admin: chain.admin.publicKey.toBase58(),
-        initialized: !!config,
         coinMint: chain.pda.coinMint.toBase58(),
-        players: config ? Number(config.playerCount.toString()) : 0,
-        keepsakes: config ? Number(config.keepsakeCount.toString()) : 0,
-      })
+      }
+      try {
+        const config = await chain.getConfig()
+        return send(res, 200, {
+          ok: true,
+          ...base,
+          initialized: !!config,
+          players: config ? Number(config.playerCount.toString()) : 0,
+          keepsakes: config ? Number(config.keepsakeCount.toString()) : 0,
+        })
+      } catch (err) {
+        return send(res, 502, { ok: false, ...base, rpcError: (err as Error).message })
+      }
     }
 
     // ----- metadata -----
