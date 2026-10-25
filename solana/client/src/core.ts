@@ -259,7 +259,10 @@ export class CenterpieceReader {
 
   /** All registered players, ranked. Reads every Player account (fine at game-night scale). */
   async leaderboard(by: LeaderboardSort = 'xp', limit = 20) {
-    const players = (await this.program.account.player.all()).map((p) => this.shapePlayer(p.account))
+    const players = (
+      // dataSize skips stale v1 Player accounts (smaller layout) still on devnet.
+      await this.program.account.player.all([{ dataSize: this.program.account.player.size }])
+    ).map((p) => this.shapePlayer(p.account))
     const key = { xp: 'xp', coins: 'coinsEarned', kudos: 'kudosReceived', connections: 'connections' }[by] as
       | 'xp'
       | 'coinsEarned'
