@@ -2088,3 +2088,69 @@ label small,
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+.profile-reset {
+  margin-top: 40px;
+  padding: 24px 0 8px;
+  border-top: 1px solid var(--line);
+  color: var(--text-muted);
+}
+.profile-reset > button {
+  font-size: 13px;
+}
+.reset-confirm {
+  max-width: 640px;
+}
+.reset-confirm h2 {
+  font-size: 32px;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+.reset-confirm p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.reset-actions {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  margin-top: 20px;
+}
+.reset-actions .danger {
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 4px;
+  padding: 12px 18px;
+}
+.source-panel .imported-text-note {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 18px 0 0;
+}
+.imported-profile-text {
+  margin-top: 8px;
+}
+.imported-profile-text summary {
+  border-color: var(--line);
+}
+.imported-profile-text > p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.imported-profile-text blockquote {
+  border-color: var(--line);
+}
+.imported-profile-text blockquote p {
+  font-size: 14px;
+}
+@media (max-width: 760px) {
+  .profile-saved:not(.read-only) {
+    padding-bottom: 24px;
+  }
+  .profile-reset {
+    margin-top: 28px;
+  }
+  .profile-reset > button {
+    min-height: 44px;
+  }
+}

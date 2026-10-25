@@ -196,7 +196,7 @@ the saved `destina-theme` preference before the app renders, otherwise following
 the device setting. Changes sync across tabs on the same origin; storage-blocked
 browsers still allow switching for the current page. The preview uses the same
 controller and palette. On phones, profiles with interests place that list first,
-connection/privacy details are collapsed, and save/continue actions remain at
+connection/privacy details are collapsed, and save actions remain at
 the bottom with safe-area spacing. Imported text and question explanations stay
 available through disclosures.
 
@@ -226,3 +226,5 @@ adapter can mint links with `POST /api/control/rooms/:code/questions-access`.
 Alternatively, enter the room code and configured `GM_API_KEY` on `/questions`;
 the browser never stores that key. These cookies grant read access only, never
 permission to select questions. See [the feed interface](docs/questions-feed.md).
+
+Player navigation contains Profile and Prompt. The profile footer offers Reset profile, which clears the Instagram connection, OAuth attempts, imported text and interests while keeping the player name and room. Previously shared questions stay in room history. Imported text is explained alongside the Instagram connection and can be expanded to review the original bio and captions.

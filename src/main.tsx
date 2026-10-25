@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import {
   ArrowRight,
   ArrowUpRight,
-  Check,
   CheckCircle2,
   Clock,
   FileText,
@@ -14,7 +13,6 @@ import {
   Shield,
   Sun,
   Moon,
-  Users,
   X,
 } from "lucide-react";
 import type {
@@ -60,7 +58,7 @@ function App() {
   );
   const [s, setS] = useState<Snapshot | null>(null),
     [loaded, setLoaded] = useState(false),
-    [view, setView] = useState<"profile" | "ready" | "capsule">(
+    [view, setView] = useState<"profile" | "capsule">(
       fromChip ? "capsule" : "profile",
     ),
     [room, setRoom] = useState<RoomPreview | null>(null),
@@ -95,16 +93,7 @@ function App() {
           (!requestedRoom || session.room.code === requestedRoom)
         ) {
           accept(session);
-          if (!fromChip)
-            setView(
-              query.has("connection")
-                ? "profile"
-                : session.me.interests.some(
-                      (i: InterestSuggestion) => i.approved,
-                    )
-                  ? "ready"
-                  : "profile",
-            );
+          if (!fromChip) setView("profile");
         } else if (session) setName(session.me.name);
       } catch (e) {
         if (!stopped) setError((e as Error).message);
@@ -331,13 +320,7 @@ function App() {
               Review your profile <ArrowRight size={16} />
             </button>
             {view === "profile" && (
-              <Profile
-                s={s}
-                busy={busy}
-                run={run}
-                onReady={() => setView("ready")}
-                readOnly
-              />
+              <Profile s={s} busy={busy} run={run} readOnly />
             )}
           </section>
         ) : (
@@ -349,12 +332,6 @@ function App() {
               >
                 Profile
               </button>
-              <button
-                className={view === "ready" ? "selected" : ""}
-                onClick={() => setView("ready")}
-              >
-                At the table
-              </button>
               <a className={view === "capsule" ? "selected" : ""} href="/relic">
                 Prompt
               </a>
@@ -364,76 +341,7 @@ function App() {
               </span>
             </nav>
             {view === "profile" ? (
-              <Profile
-                s={s}
-                busy={busy}
-                run={run}
-                onReady={() => setView(fromChip ? "capsule" : "ready")}
-              />
-            ) : view === "ready" ? (
-              <section className="ready-layout">
-                <div className="ready-main">
-                  <span className="eyebrow">YOUR PLACE AT THE TABLE</span>
-                  <div className="ready-seal">
-                    <span>{s.me.name[0].toUpperCase()}</span>
-                  </div>
-                  <h1>
-                    {s.me.interests.some((i) => i.approved) ? (
-                      <>
-                        You’re in,
-                        <br />
-                        <em>{s.me.name}.</em>
-                      </>
-                    ) : (
-                      <>
-                        A little more
-                        <br />
-                        <em>about you.</em>
-                      </>
-                    )}
-                  </h1>
-                  <p>
-                    {s.me.interests.some((i) => i.approved)
-                      ? "You’re ready. Tina will bring your next prompt."
-                      : "A few interests will help us find your questions."}
-                  </p>
-                  <div className="interest-cloud">
-                    {s.me.interests
-                      .filter((i) => i.approved)
-                      .map((i) => (
-                        <span key={i.id}>{i.label}</span>
-                      ))}
-                  </div>
-                  <button
-                    className="text-button"
-                    onClick={() => setView("profile")}
-                  >
-                    {s.me.interests.some((i) => i.approved)
-                      ? "Edit your profile"
-                      : "Add your interests"}
-                    <ArrowRight size={15} />
-                  </button>
-                </div>
-                <aside className="panel next-panel">
-                  <span className="eyebrow">WHAT HAPPENS NEXT</span>
-                  <h2>
-                    Something to
-                    <br />
-                    talk about.
-                  </h2>
-                  <div className="next-copy">
-                    <p>Your Game Master is choosing the next question.</p>
-                    <p>Tap an NFC tag to open the current prompt.</p>
-                  </div>
-                  <a className="secondary full" href="/relic">
-                    Your prompt <ArrowUpRight size={16} />
-                  </a>
-                  <div className="quiet-note">
-                    <LockKeyhole size={15} />
-                    <p>Private missions stay on the assigned player’s phone.</p>
-                  </div>
-                </aside>
-              </section>
+              <Profile s={s} busy={busy} run={run} />
             ) : (
               <Capsule s={s} onProfile={() => setView("profile")} />
             )}
@@ -451,7 +359,6 @@ function Profile({
   s,
   busy,
   run,
-  onReady,
   readOnly = false,
 }: {
   s: Snapshot;
@@ -462,7 +369,6 @@ function Profile({
     body?: unknown,
     method?: string,
   ) => Promise<boolean>;
-  onReady: () => void;
   readOnly?: boolean;
 }) {
   const approved = s.me.interests.filter((i) => i.approved);
@@ -560,6 +466,42 @@ function Profile({
               <p>{importSummary(s.sources)}</p>
             </div>
           )}
+          {s.sources.some((source) => source.kind !== "manual") && (
+            <p className="imported-text-note">
+              Imported text means your bio and post captions.
+            </p>
+          )}
+          {s.sources.some((source) => source.kind !== "manual") && (
+            <details className="imported-profile-text">
+              <summary>
+                <FileText size={14} />
+                View imported text
+                <span>
+                  {
+                    s.sources.filter((source) => source.kind !== "manual")
+                      .length
+                  }
+                </span>
+              </summary>
+              <p>
+                This is the text Instagram shared from your bio and recent post
+                captions. We use it to suggest interests. Only the interests you
+                save are used for prompts.
+              </p>
+              {s.sources
+                .filter((source) => source.kind !== "manual")
+                .map((source) => (
+                  <blockquote key={source.id}>
+                    <span className="eyebrow">
+                      {source.kind === "manual"
+                        ? "YOU ADDED"
+                        : source.kind.toUpperCase()}
+                    </span>
+                    <p>{source.text}</p>
+                  </blockquote>
+                ))}
+            </details>
+          )}
           <details className="connection-details">
             <summary>About this connection</summary>
             {!readOnly && s.connected && (
@@ -608,7 +550,8 @@ function Profile({
                 </span>
                 {approved.length > 0 && (
                   <span className="saved-count">
-                    {approved.length} interests
+                    {approved.length}{" "}
+                    {approved.length === 1 ? "interest" : "interests"}
                   </span>
                 )}
               </div>
@@ -655,15 +598,6 @@ function Profile({
                   >
                     Edit interests
                   </button>
-                  <div className="profile-action">
-                    <button
-                      className="primary full"
-                      disabled={!!busy}
-                      onClick={onReady}
-                    >
-                      Back to the table <ArrowRight size={17} />
-                    </button>
-                  </div>
                 </>
               )}
             </>
@@ -767,66 +701,58 @@ function Profile({
               </form>
             </>
           )}
-
-          {s.sources.some((source) => source.kind !== "manual") && (
-            <details>
-              <summary>
-                <FileText size={14} />
-                Imported text
-                <span>
-                  {
-                    s.sources.filter((source) => source.kind !== "manual")
-                      .length
-                  }
-                </span>
-              </summary>
-              {s.sources
-                .filter((source) => source.kind !== "manual")
-                .map((source) => (
-                  <blockquote key={source.id}>
-                    <span className="eyebrow">
-                      {source.kind === "manual"
-                        ? "YOU ADDED"
-                        : source.kind.toUpperCase()}
-                    </span>
-                    <p>{source.text}</p>
-                  </blockquote>
-                ))}
-            </details>
-          )}
+        </section>
+      </div>
+      {!readOnly && (
+        <section className="profile-reset" aria-label="Profile settings">
           {deleting ? (
-            <div className="delete-confirm">
+            <div
+              className="reset-confirm"
+              role="group"
+              aria-labelledby="reset-heading"
+            >
+              <h2 id="reset-heading">Start fresh?</h2>
               <p>
-                Remove your connection, imported text, and interests? Already
-                assigned questions stay with the room.
+                This clears your Instagram connection, imported text and all
+                interests. Your name and room stay the same. Questions already
+                shared with the room stay visible.
               </p>
-              <button
-                className="danger"
-                disabled={!!busy}
-                onClick={async () => {
-                  if (await run("delete", "/profile", undefined, "DELETE"))
-                    setDeleting(false);
-                }}
-              >
-                Delete profile data
-              </button>
-              <button
-                className="text-button"
-                onClick={() => setDeleting(false)}
-              >
-                Keep my profile
-              </button>
+              <div className="reset-actions">
+                <button
+                  className="danger"
+                  disabled={!!busy}
+                  onClick={async () => {
+                    if (await run("delete", "/profile", undefined, "DELETE")) {
+                      setDeleting(false);
+                      setManual("");
+                      setEditing(true);
+                      setSavedRecently(false);
+                    }
+                  }}
+                >
+                  {busy === "delete" ? "Resetting…" : "Reset profile"}
+                </button>
+                <button
+                  className="text-button"
+                  disabled={!!busy}
+                  autoFocus
+                  onClick={() => setDeleting(false)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
             <button
-              className="text-button muted"
+              className="text-button"
+              disabled={!!busy}
               onClick={() => setDeleting(true)}
             >
-              Remove profile
+              Reset profile
             </button>
           )}
         </section>
-      </div>
+      )}
     </section>
   );
 }
