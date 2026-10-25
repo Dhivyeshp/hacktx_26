@@ -23,7 +23,7 @@ Roles: `pi` (robot + webcam), `visionpro` (Game Master), `hub` (game server / AI
 | `stop` | none |
 | `deliver` | `target_player_id, track_id?`: drive to that person |
 | `dispense` | none: drop a capsule now |
-| `screen` | `face?, text?, qr?`: what the badge screen shows (all optional, missing keeps the current value). `face`: `neutral`, `happy`, `excited`, `cute`, `love`, `wink`, `surprised`, `thinking`, `sad`, `angry`, `sleepy`. `text: ""` clears the caption. `qr: "<url>"` replaces the face with a QR code, `qr: true` re-shows the last one, `qr: false` goes back to the face. See `firmware/badge-face/` |
+| `screen` | `text, face?`: what the ESP32 screen shows |
 
 ## Vision Pro ↔ hub
 

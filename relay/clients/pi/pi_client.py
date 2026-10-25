@@ -35,15 +35,7 @@ def open_serial():
         return None
     import serial  # pyserial
 
-    s = serial.Serial()
-    s.port = SERIAL_PORT
-    s.baudrate = 115200
-    s.timeout = 0
-    # DTR and RTS drive the ESP32-C3's boot-mode and reset lines; keep them low.
-    s.dtr = False
-    s.rts = False
-    s.open()
-    return s
+    return serial.Serial(SERIAL_PORT, 115200, timeout=0)
 
 
 def url_with_params():
@@ -73,12 +65,9 @@ async def send_telemetry(ws, esp32, state):
         if esp32 is not None:
             for line in esp32.readlines():
                 try:
-                    status = json.loads(line)
+                    state.update(json.loads(line))
                 except ValueError:
-                    continue
-                if isinstance(status, dict):
-                    status.pop("type", None)  # don't let it rename the telemetry message
-                    state.update(status)
+                    pass
         await ws.send(json.dumps({"type": "telemetry", "robot_id": ROBOT_ID, **state}))
         await asyncio.sleep(0.1)
 
