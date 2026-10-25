@@ -1,6 +1,55 @@
-@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;0,600;1,400&family=Karla:wght@400;500;600;700&display=swap");
+@font-face {
+  font-family: "Cormorant Unicase";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/cormorant-unicase-400.ttf) format("truetype");
+}
+@font-face {
+  font-family: "Cormorant Unicase";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/fonts/cormorant-unicase-500.ttf) format("truetype");
+}
+@font-face {
+  font-family: "Cormorant Unicase";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/cormorant-unicase-600.ttf) format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/space-grotesk-400.ttf) format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/fonts/space-grotesk-500.ttf) format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/space-grotesk-600.ttf) format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/fonts/space-grotesk-700.ttf) format("truetype");
+}
+
 :root {
-  font-family: "Karla", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-synthesis: none;
   font-weight: 400;
   background: #252823;
@@ -53,7 +102,7 @@ p {
 h1,
 h2,
 h3 {
-  font-family: "Bodoni Moda", Georgia, serif;
+  font-family: "Cormorant Unicase", Georgia, serif;
   font-weight: 400;
   text-wrap: balance;
 }
@@ -63,6 +112,7 @@ h1 {
   letter-spacing: -1.8px;
 }
 h1 em {
+  font-style: normal;
   color: inherit;
   font-weight: 400;
 }
@@ -135,12 +185,12 @@ main {
   gap: 24px;
 }
 .brand {
-  font-family: "Bodoni Moda", Georgia, serif;
+  font-family: "Cormorant Unicase", Georgia, serif;
   font-size: 32px;
   letter-spacing: 5px;
 }
 .brand small {
-  font-family: "Karla", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   display: block;
   font-size: 9px;
   letter-spacing: 1.7px;
@@ -359,7 +409,7 @@ main {
   color: var(--muted);
 }
 .avatar {
-  font-family: "Bodoni Moda", Georgia, serif;
+  font-family: "Cormorant Unicase", Georgia, serif;
   font-size: 23px;
   color: #eee9dc;
 }
@@ -622,7 +672,7 @@ blockquote p {
   padding: 20px 0;
 }
 .ready-seal {
-  font-family: "Bodoni Moda", Georgia, serif;
+  font-family: "Cormorant Unicase", Georgia, serif;
   font-size: 90px;
   line-height: 1.1;
   margin: 28px 0;
