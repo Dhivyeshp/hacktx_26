@@ -240,12 +240,12 @@ function App() {
             </div>
             <section className="panel join-panel">
               <span className="eyebrow">
-                {fromChip ? "YOUR RELIC IS WAITING" : "YOUR TABLE"}
+                {fromChip ? "YOUR PROMPT IS WAITING" : "YOUR TABLE"}
               </span>
               <h2>{room ? room.name : "A place at the table."}</h2>
               <p>
                 {fromChip
-                  ? "Join your room to open this relic."
+                  ? "Join your room to open this prompt."
                   : "What should we call you?"}
               </p>
               {room && (
@@ -307,7 +307,7 @@ function App() {
                 <Shield size={16} />
                 <p>
                   {fromChip
-                    ? "Join on this phone to open your relics."
+                    ? "Join on this phone to open your prompts."
                     : "You choose which interests the game uses."}
                 </p>
               </div>
@@ -356,7 +356,7 @@ function App() {
                 At the table
               </button>
               <a className={view === "capsule" ? "selected" : ""} href="/relic">
-                Relic
+                Prompt
               </a>
               <span className="player-name">
                 {s.me.name}
@@ -394,7 +394,7 @@ function App() {
                   </h1>
                   <p>
                     {s.me.interests.some((i) => i.approved)
-                      ? "You’re ready. Tina will bring your relic."
+                      ? "You’re ready. Tina will bring your next prompt."
                       : "A few interests will help us find your questions."}
                   </p>
                   <div className="interest-cloud">
@@ -423,10 +423,10 @@ function App() {
                   </h2>
                   <div className="next-copy">
                     <p>Your Game Master is choosing the next question.</p>
-                    <p>Tap the chip inside your relic to open it here.</p>
+                    <p>Tap an NFC tag to open the current prompt.</p>
                   </div>
                   <a className="secondary full" href="/relic">
-                    Your relic <ArrowUpRight size={16} />
+                    Your prompt <ArrowUpRight size={16} />
                   </a>
                   <div className="quiet-note">
                     <LockKeyhole size={15} />
@@ -876,7 +876,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
   return (
     <section className="capsule-page">
       <div className="capsule-heading">
-        <span className="eyebrow">YOUR RELIC</span>
+        <span className="eyebrow">YOUR PROMPT</span>
         <span className="live-label">
           <span className="dot" />
           {s.room.name}
@@ -900,7 +900,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
         <article className="prompt-card" key={p.id}>
           <div className="prompt-top">
             <span className="eyebrow">
-              RELIC {String(p.number).padStart(2, "0")}
+              PROMPT {String(p.number).padStart(2, "0")}
             </span>
             <span className="duration">
               <Clock size={14} />
@@ -942,7 +942,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
       ) : (
         <div className="waiting-prompt">
           <span className="eyebrow">BETWEEN QUESTIONS</span>
-          <h1>Your next relic.</h1>
+          <h1>Your next prompt.</h1>
           <p>It will appear here when your Game Master is ready.</p>
           {!s.me.interests.some((i) => i.approved) && (
             <button className="secondary" onClick={onProfile}>

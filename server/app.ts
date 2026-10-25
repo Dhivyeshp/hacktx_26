@@ -86,7 +86,7 @@ export function createApp(db = openDb()) {
     const s = who && getSession(db, who.session_id);
     if (!who || !s || !s.players.some((p) => p.id === who.player_id))
       throw Object.assign(
-        new Error("Scan Tina’s room QR to join before opening a relic."),
+        new Error("Scan Tina’s room QR to join before opening a prompt."),
         { status: 401 },
       );
     return { s, me: who.player_id };

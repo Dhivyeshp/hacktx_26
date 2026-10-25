@@ -306,7 +306,7 @@ export function Questions() {
                   <h2>On the table</h2>
                   <span aria-live="polite">
                     {feed.activeQuestion
-                      ? `Relic ${String(feed.activeQuestion.number).padStart(2, "0")}`
+                      ? `Prompt ${String(feed.activeQuestion.number).padStart(2, "0")}`
                       : "Waiting for a selection"}
                   </span>
                 </div>
@@ -314,8 +314,8 @@ export function Questions() {
                   card(feed.activeQuestion.recommendation, true)
                 ) : (
                   <p className="questions-empty">
-                    Your Game Master’s next choice will appear here and on every
-                    relic.
+                    Your Game Master’s next choice will appear here and on players’
+                    phones.
                   </p>
                 )}
               </section>
