@@ -170,7 +170,8 @@ other players can join separate browser sessions and approve manual interests.
 
 Destina uses relics for the objects Tina carries. Public URLs and API field names
 remain compatible with the existing tap tags and control adapter. The player
-interface uses Cormorant Unicase and Space Grotesk, parchment panels, charcoal and moss, and
+interface uses Cormorant Unicase for the lowercase destina wordmark and Space Grotesk
+for headings, body text, and controls, with parchment panels, charcoal and moss, and
 flat rust-colored actions. The private preview presents questions as numbered
 reading rows. Gradients, glow effects, decorative rune graphics, sparkle icons,
 and glass effects are removed. Profile excerpts remain verbatim.

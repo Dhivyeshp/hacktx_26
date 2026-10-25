@@ -162,9 +162,7 @@ function App() {
     <div className="app-shell">
       <header className="header">
         <a className="brand" href="/">
-          <span>
-            DESTINA<small>A GAME WITH THE PEOPLE HERE.</small>
-          </span>
+          <span>destina</span>
         </a>
         {s && (
           <div className="room-pill">
@@ -193,7 +191,7 @@ function App() {
         {!joined ? (
           <section className="join-layout">
             <div className="welcome-copy">
-              <span className="eyebrow">DESTINA WITH TINA</span>
+              <span className="eyebrow">destina with tina</span>
               <h1>
                 Good company.
                 <br />
@@ -424,7 +422,7 @@ function App() {
         )}
       </main>
       <footer>
-        <span>DESTINA WITH TINA</span>
+        <span>destina with tina</span>
         <span>GOOD COMPANY GOES A LONG WAY</span>
       </footer>
     </div>
