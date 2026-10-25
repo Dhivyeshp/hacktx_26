@@ -8,6 +8,6 @@ const room = createRoom(
 );
 const base = process.env.PUBLIC_URL || "http://localhost:3000";
 console.log(
-  `Room: ${room.name}\nRoom code: ${room.code}\nTina QR destination: ${base}/join/${room.code}\nAll prompt tags: ${base}/relic\nQuestion feed: ${base}/questions?room=${room.code}`,
+  `Room: ${room.name}\nRoom code: ${room.code}\nTina QR destination: ${base}/join/${room.code}\nAll prompt tags: ${base}/prompt\nQuestion feed: ${base}/questions?room=${room.code}`,
 );
 db.close();

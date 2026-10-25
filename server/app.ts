@@ -34,6 +34,12 @@ export function createApp(db = openDb()) {
   const app = express();
   const generating = new Set<string>();
   app.set("trust proxy", 1);
+  app.get(["/relic", "/c"], (req, res) => {
+    const query = req.originalUrl.includes("?")
+      ? req.originalUrl.slice(req.originalUrl.indexOf("?"))
+      : "";
+    res.redirect(302, `/prompt${query}`);
+  });
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
   const secure = () =>
@@ -202,7 +208,7 @@ export function createApp(db = openDb()) {
     }),
   );
   app.get(
-    ["/api/capsule", "/api/relic"],
+    ["/api/capsule", "/api/relic", "/api/prompt"],
     wrap((req, res) => {
       const { s, me } = auth(req);
       res.json(capsuleSnapshot(s, me));
@@ -564,6 +570,7 @@ export function createApp(db = openDb()) {
         joinPath: `/join/${s.code}`,
         capsulePath: "/c",
         relicPath: "/relic",
+        promptPath: "/prompt",
         questionsPath: `/questions?room=${s.code}`,
       });
     }),

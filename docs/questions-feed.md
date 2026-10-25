@@ -1,13 +1,12 @@
 # Private question feed
 
-The player NFC route is `/relic`. The legacy `/c` route and `/api/capsule` remain
-compatible. GET `/api/relic` uses the existing player cookie and returns a
+The player NFC route is `/prompt`. Legacy `/relic` and `/c` links redirect there while preserving query parameters. `/api/relic` and `/api/capsule` remain compatible. GET `/api/prompt` uses the existing player cookie and returns a
 `CapsuleSnapshot`. An unauthenticated phone must join a room first. Public prompt
 text is shared; private mission text is filtered on the server by player ID.
 
 The private GM route is `/questions`. Its `QuestionsSnapshot` includes named
 players, chronological suggestion batches, current selection and round history.
-It excludes raw profile excerpts, Instagram tokens and player credentials.
+Player rows include names, saved-interest readiness and recorded turn counts. It excludes raw profile excerpts, Instagram tokens and player credentials.
 Batches are persisted in the session JSON in SQLite when generation succeeds.
 The original candidate stays in its batch; an edited selection is represented by
 the round’s recommendation. Sessions from before this feature show any remaining

@@ -53,7 +53,7 @@ function App() {
     query.get("join") ||
     ""
   ).toUpperCase();
-  const fromChip = ["/c", "/relic"].includes(
+  const fromChip = ["/c", "/relic", "/prompt"].includes(
     location.pathname.replace(/\/$/, ""),
   );
   const [s, setS] = useState<Snapshot | null>(null),
@@ -332,7 +332,10 @@ function App() {
               >
                 Profile
               </button>
-              <a className={view === "capsule" ? "selected" : ""} href="/relic">
+              <a
+                className={view === "capsule" ? "selected" : ""}
+                href="/prompt"
+              >
                 Prompt
               </a>
               <span className="player-name">
@@ -765,7 +768,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
     const seq = ++serial.current;
     setRefreshing(true);
     try {
-      const next: CapsuleSnapshot = await api("/relic");
+      const next: CapsuleSnapshot = await api("/prompt");
       if (seq === serial.current) {
         setData(next);
         setError("");

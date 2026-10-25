@@ -110,7 +110,12 @@ export function questionsSnapshot(
   return {
     schemaVersion: 1,
     room: roomInfo(s),
-    players: s.players.map(({ id, name }) => ({ id, name })),
+    players: s.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      ready: p.interests.some((i) => i.approved),
+      participation: p.participation,
+    })),
     batches,
     activeQuestion: s.status === "finished" ? null : activeQuestion(s),
     history: s.rounds,

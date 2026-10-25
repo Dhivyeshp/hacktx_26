@@ -95,6 +95,7 @@ test("only the trusted control interface can create a room; unset key fails clos
   assert.equal(r.body.joinPath, `/join/${code}`);
   assert.equal(r.body.capsulePath, "/c");
   assert.equal(r.body.relicPath, "/relic");
+  assert.equal(r.body.promptPath, "/prompt");
   assert.equal(r.body.questionsPath, `/questions?room=${code}`);
   assert.equal(r.body.players.length, 0);
 });
@@ -138,6 +139,7 @@ test("bot room lookup exposes only join information; players join without becomi
   assert.equal((await request("/session")).status, 401);
   assert.equal((await request("/capsule")).status, 401);
   assert.equal((await request("/relic")).status, 401);
+  assert.equal((await request("/prompt")).status, 401);
 });
 test("same room QR and player cookie do not create duplicate players", async () => {
   const r = await request("/join", { code, name: "Elijah" }, a);
@@ -286,6 +288,8 @@ test("identical capsule URL resolves active question; secret belongs only to tar
   assert.equal(other.body.prompt.secret, undefined);
   assert.equal(partner.body.prompt.secret, undefined);
   assert.ok(target.body.prompt.secret);
+  assert.deepEqual((await request("/prompt", undefined, c)).body, target.body);
+  assert.deepEqual((await request("/prompt", undefined, a)).body, other.body);
   assert.deepEqual((await request("/relic", undefined, c)).body, target.body);
   assert.deepEqual((await request("/relic", undefined, a)).body, other.body);
   assert.equal(target.body.prompt.isTarget, true);
@@ -913,6 +917,10 @@ test("private question batches survive selection and restart without exposing im
     !JSON.stringify(feed.body).includes("Never expose this imported bio"),
   );
   assert.equal(feed.body.players[0].interests, undefined);
+  assert.equal(feed.body.players.length, 3);
+  assert.equal(feed.body.players[0].name, "Lark");
+  assert.equal(feed.body.players[0].ready, true);
+  assert.equal(feed.body.players[0].participation, 0);
   assert.equal(
     (await request("/session", undefined, cookies[0])).body.suggestionBatches,
     undefined,
@@ -929,4 +937,12 @@ test("private question batches survive selection and restart without exposing im
   assert.equal(next.body.batches.length, 2);
   assert.equal(next.body.activeQuestion, null);
   assert.equal(next.body.history[0].status, "completed");
+});
+
+test("old NFC paths redirect to the canonical prompt page and keep query parameters", async () => {
+  for (const path of ["/relic", "/c"]) {
+    const response = await fetch(base + path + "?t=07", { redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/prompt?t=07");
+  }
 });

@@ -89,7 +89,7 @@ The connector uses **Instagram API with Instagram Login**, requesting only `inst
    ```
 
    Generate the encryption key with `openssl rand -hex 32`. Never commit secrets.
-5. Restart, generate the bot QR using that HTTPS origin, and join via that origin before connecting Instagram. Encode `${PUBLIC_URL}/c` on **every** relic chip. Localhost links do not work on other phones.
+5. Restart, generate the bot QR using that HTTPS origin, and join via that origin before connecting Instagram. Encode `${PUBLIC_URL}/c` on **every** NFC chip. Localhost links do not work on other phones.
 6. Validate one test account's actual fields. The import notice reports available and unavailable fields. Broader access depends on Meta's current review and access requirements.
 
 The connector imports supported profile text and up to 12 recent captions, probing optional biography/type/caption fields separately. Unsupported fields do not fabricate data or fail the entire import. OAuth state is session-bound, one-time, and expires after ten minutes. Tokens are encrypted with AES-256-GCM and purged after expiry; this immediate-import release uses short-lived tokens and requires reconnecting for another import rather than running a refresh/sync service.
@@ -135,7 +135,7 @@ Choose the target through `targetPlayerId` when requesting recommendations; ever
 | `POST /api/interests` | `{approvedIds,labels}` → approve suggestions and add manual interests |
 | `DELETE /api/profile` | Delete own sources/interests and disconnect |
 
-Player cookies are HTTP-only, SameSite=Lax, and Secure for an HTTPS `PUBLIC_URL`; their credentials are stored hashed. Browser mutations reject foreign origins. Private sources and pending interests are visible only to their owner; public relic responses omit the recommendation queue, evidence IDs, model reasoning, and private missions for other players. Finished rooms show no active prompt. Rejoining the same room with the same browser does not add a duplicate player. Joining another room explicitly changes that browser's active room.
+Player cookies are HTTP-only, SameSite=Lax, and Secure for an HTTPS `PUBLIC_URL`; their credentials are stored hashed. Browser mutations reject foreign origins. Private sources and pending interests are visible only to their owner; public prompt responses omit the recommendation queue, evidence IDs, model reasoning, and private missions for other players. Finished rooms show no active prompt. Rejoining the same room with the same browser does not add a duplicate player. Joining another room explicitly changes that browser's active room.
 
 ## Source layout and verification
 
@@ -172,7 +172,7 @@ other players can join separate browser sessions and approve manual interests.
 
 The supplied [design spec](docs/destina-design-spec.md) is implemented with shared
 color and typography tokens in `src/design-tokens.css`. The existing layout stays
-in place. Cormorant Unicase handles the lowercase destina wordmark and relic
+in place. Cormorant Unicase handles the lowercase destina wordmark and prompt
 titles, Cormorant Garamond handles italic headlines, and Space Grotesk handles
 body text and controls. All three fonts and their SIL licenses are bundled in
 `public/fonts` so players do not need Google Fonts access.
@@ -185,7 +185,7 @@ The provided ring-and-star logo, light variant, app icon, and website favicon ar
 in `public`. The lowercase wordmark and omitted tagline follow the explicit
 branding preferences from the app design session.
 
-Destina uses relics for the objects Tina carries. Existing public URLs and API
+Destina calls its questions prompts. Tina carries the NFC tags. Existing public URLs and API
 field names remain compatible with the tap tags and control adapter. The private
 preview uses the same design tokens and a numbered question reading layout.
 
@@ -202,8 +202,7 @@ available through disclosures.
 
 ### Shared NFC link and private questions
 
-Write **`https://your-domain/relic`** onto every NFC tag. `/c` still works for
-existing tags. The link uses the phone’s joined room and always reads that room’s
+Write **`https://your-domain/prompt`** onto every NFC tag. Existing `/relic` and `/c` tags redirect to `/prompt`. The link uses the phone’s joined room and always reads that room’s
 current GM selection. It updates every four seconds and when returning to the
 page. Tapping does not claim or consume a relic. The assigned player alone sees
 private Bounty instructions. Players should onboard and tap using the same browser
@@ -228,3 +227,5 @@ the browser never stores that key. These cookies grant read access only, never
 permission to select questions. See [the feed interface](docs/questions-feed.md).
 
 Player navigation contains Profile and Prompt. The profile footer offers Reset profile, which clears the Instagram connection, OAuth attempts, imported text and interests while keeping the player name and room. Previously shared questions stay in room history. Imported text is explained alongside the Instagram connection and can be expanded to review the original bio and captions.
+
+See [remaining work](docs/remaining-work.md) for the integration and deployment checklist.

@@ -101,7 +101,12 @@ export type TranscriptSegment = {
 export type QuestionsSnapshot = {
   schemaVersion: 1;
   room: RoomInfo;
-  players: { id: string; name: string }[];
+  players: {
+    id: string;
+    name: string;
+    ready: boolean;
+    participation: number;
+  }[];
   batches: SuggestionBatch[];
   activeQuestion: Round | null;
   history: Round[];

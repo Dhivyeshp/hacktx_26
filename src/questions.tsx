@@ -290,6 +290,42 @@ export function Questions() {
                 </button>
               </div>
             </div>
+            <section className="gm-roster" aria-labelledby="roster-heading">
+              <div className="feed-section-heading">
+                <h2 id="roster-heading">Everyone here</h2>
+                <span>{feed.players.length} of 6 joined</span>
+              </div>
+              {feed.players.length ? (
+                <ul
+                  className="gm-player-list"
+                  aria-label="Players in this room"
+                >
+                  {feed.players.map((player) => (
+                    <li key={player.id}>
+                      <span className="gm-player-initial" aria-hidden="true">
+                        {player.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <div className="gm-player-identity">
+                        <strong>{player.name}</strong>
+                        <span>
+                          {player.ready
+                            ? "Interests saved"
+                            : "Adding interests"}
+                        </span>
+                      </div>
+                      <span className="gm-player-turns">
+                        {player.participation}{" "}
+                        {player.participation === 1 ? "turn" : "turns"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="questions-empty">
+                  People appear here as they join Tina’s room.
+                </p>
+              )}
+            </section>
             {error && (
               <p className="alert" role="alert">
                 {error}
@@ -314,8 +350,8 @@ export function Questions() {
                   card(feed.activeQuestion.recommendation, true)
                 ) : (
                   <p className="questions-empty">
-                    Your Game Master’s next choice will appear here and on players’
-                    phones.
+                    Your Game Master’s next choice will appear here and on
+                    players’ phones.
                   </p>
                 )}
               </section>
