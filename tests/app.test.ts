@@ -1761,6 +1761,49 @@ test("explicit demo mode opens one GM game and joins players without codes; norm
       getSession(db, demoCode)!.conversation!.segments[0].text,
       "A sample conversation",
     );
+    const post = (path: string, body: unknown, cookie = "") =>
+      fetch(origin + "/api" + path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    assert.equal(
+      (await post("/questions/recommendations", { origin: "library" })).status,
+      409,
+    );
+    const second = await post("/join", { name: "Demo player two" });
+    const firstCookie = joined.headers.get("set-cookie")!.split(";")[0];
+    const secondCookie = second.headers.get("set-cookie")!.split(";")[0];
+    await post(
+      "/interests",
+      { labels: ["Hiking"], approvedIds: [] },
+      firstCookie,
+    );
+    assert.equal(
+      (await post("/questions/recommendations", { origin: "library" })).status,
+      409,
+    );
+    await post(
+      "/interests",
+      { labels: ["Pottery"], approvedIds: [] },
+      secondCookie,
+    );
+    const recommendations = await post("/questions/recommendations", {
+      origin: "library",
+    });
+    assert.equal(recommendations.status, 200);
+    const options = await recommendations.json();
+    assert.equal(
+      (
+        await post("/questions/assign", {
+          recommendationId: options.recommendations[0].id,
+        })
+      ).status,
+      200,
+    );
     const privateConfig = await request("/demo");
     assert.equal(privateConfig.body.enabled, false);
     assert.equal((await request("/questions/session")).status, 401);

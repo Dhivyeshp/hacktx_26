@@ -321,7 +321,7 @@ export function Questions() {
                 className="primary"
                 disabled={
                   busy ||
-                  feed.room.readyCount < 3 ||
+                  feed.room.readyCount < (demo ? 2 : 3) ||
                   feed.room.readyCount !== feed.room.playerCount ||
                   (editing === rec.id && instructions.trim().length < 15)
                 }
@@ -620,6 +620,14 @@ export function Questions() {
                   aria-labelledby="game-controls-heading"
                 >
                   <h2 id="game-controls-heading">The next prompt</h2>
+                  {(feed.room.playerCount < (demo ? 2 : 3) ||
+                    feed.room.readyCount !== feed.room.playerCount) && (
+                    <p className="gm-help" role="status">
+                      {feed.room.playerCount < (demo ? 2 : 3)
+                        ? `Waiting for at least ${demo ? 2 : 3} players to join.`
+                        : "Waiting for everyone to add at least one interest."}
+                    </p>
+                  )}
                   <div className="gm-control-fields">
                     <label>
                       Spotlight
@@ -654,7 +662,7 @@ export function Questions() {
                         busy ||
                         feed.preparing ||
                         !!feed.activeQuestion ||
-                        feed.room.readyCount < 3 ||
+                        feed.room.readyCount < (demo ? 2 : 3) ||
                         feed.room.readyCount !== feed.room.playerCount
                       }
                       onClick={() => generate("profiles")}
@@ -667,7 +675,7 @@ export function Questions() {
                         busy ||
                         feed.preparing ||
                         !!feed.activeQuestion ||
-                        feed.room.readyCount < 3 ||
+                        feed.room.readyCount < (demo ? 2 : 3) ||
                         feed.room.readyCount !== feed.room.playerCount
                       }
                       onClick={() => generate("library")}
@@ -847,7 +855,7 @@ export function Questions() {
                             busy ||
                             !!feed.activeQuestion ||
                             feed.preparing ||
-                            feed.room.readyCount < 3 ||
+                            feed.room.readyCount < (demo ? 2 : 3) ||
                             feed.room.readyCount !== feed.room.playerCount
                           }
                           onClick={() => generate("conversation")}

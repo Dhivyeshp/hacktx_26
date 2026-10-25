@@ -272,5 +272,5 @@ save automatically; players can remove anything that does not fit. The voice
 intro still requires reviewing its text and explicitly requesting extraction.
 
 GM readiness updates from persisted interests. Every joined player needs at least
-one interest, with at least three players total, before generation or assignment.
+one interest, with at least two players in demo mode (three in private mode), before generation or assignment.
 Removing a player's last interest blocks the next generation and start again.

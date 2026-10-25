@@ -38,7 +38,7 @@ speaker confirmation are unchanged by this layout.
 
 ## A first test
 
-1. Join at least three players and save their interests.
+1. Join at least two players in demo mode (three in private mode) and add their interests.
 2. Use the question library for a free rehearsal, or request three Muse prompts.
 3. Choose a prompt, optionally edit its wording, and open `/prompt` on a joined phone.
 4. In Live conversation, confirm everyone agrees to transcription and select Listen on this device. HTTPS and microphone permission are required.

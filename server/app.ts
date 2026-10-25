@@ -41,6 +41,7 @@ const cookie = "centerpiece";
 const text = z.string().trim().min(1).max(60);
 export function createApp(db = openDb()) {
   const demoMode = process.env.DEMO_MODE === "true";
+  const minimumPlayers = demoMode ? 2 : 3;
   const demoCode = process.env.DEMO_ROOM_CODE?.trim().toUpperCase();
   function demoRoom() {
     const s = demoCode && getSession(db, demoCode);
@@ -800,11 +801,11 @@ export function createApp(db = openDb()) {
           error: "Clear the current question before preparing the next one.",
         });
       if (
-        s.players.length < 3 ||
+        s.players.length < minimumPlayers ||
         s.players.some((p) => !p.interests.some((i) => i.approved))
       )
         return res.status(409).json({
-          error: "At least three players with approved interests are needed.",
+          error: `At least ${minimumPlayers} players are needed, and everyone must have an interest.`,
         });
       if (generating.has(s.id))
         return res
@@ -913,15 +914,13 @@ export function createApp(db = openDb()) {
           error: "Clear the current question before assigning another.",
         });
       if (
-        s.players.length < 3 ||
+        s.players.length < minimumPlayers ||
         s.players.some((p) => !p.interests.some((i) => i.approved))
       )
-        return res
-          .status(409)
-          .json({
-            error:
-              "Every player needs at least one interest before the game can start.",
-          });
+        return res.status(409).json({
+          error:
+            "Every player needs at least one interest before the game can start.",
+        });
       const rec = s.recommendations.find(
         (r) => r.id === input.recommendationId,
       );
@@ -970,7 +969,7 @@ export function createApp(db = openDb()) {
       if (
         s.conversation?.automatic &&
         enoughConversation(s) &&
-        s.players.length >= 3 &&
+        s.players.length >= minimumPlayers &&
         s.players.every((p) => p.interests.some((i) => i.approved))
       ) {
         const invoke = async () => {
