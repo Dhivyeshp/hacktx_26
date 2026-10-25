@@ -34,6 +34,29 @@ struct RelayClientChecks {
         try await waitUntil { client.isConnected && client.framesReceived == 1 }
         precondition(client.hasFreshFrame && client.latestFrame != nil && client.peers.contains("pi"))
         precondition(client.controlBlockReason == nil && client.canControlRobot)
+        // A gesture callback followed by timer callbacks must not duplicate the
+        // first send, but held movement still needs a periodic wire heartbeat.
+        client.sendDrive(left: 0.3, right: 0.3)
+        try await waitUntil { client.motionStatus == "Wheel command sent" }
+        for _ in 0..<10 { client.sendDrive(left: 0.3, right: 0.3) }
+        try await Task.sleep(for: .milliseconds(20))
+        for _ in 0..<10 { client.sendDrive(left: 0.3, right: 0.3) }
+        try await Task.sleep(for: .milliseconds(110))
+        client.sendDrive(left: 0.3, right: 0.3)
+        try await Task.sleep(for: .milliseconds(30))
+        // Changed direction must bypass the identical-command heartbeat limit.
+        client.sendDrive(left: 0.3, right: 0)
+        try await Task.sleep(for: .milliseconds(30))
+        for _ in 0..<10 {
+            client.stopRobot()
+            await Task.yield() // Exercise callbacks while the stop writer awaits.
+        }
+        try await waitUntil { client.motionStatus == "Stop sent" }
+        // Restarting the same direction after stop must send immediately.
+        client.sendDrive(left: 0.3, right: 0)
+        try await Task.sleep(for: .milliseconds(30))
+        client.stopRobot()
+        try await waitUntil { client.motionStatus == "Stop sent" }
         for (left, right): (Float, Float) in [(0, 0.35), (0.35, 0.35), (0.35, 0)] {
             client.sendDrive(left: left, right: right)
             try await waitUntil { client.motionStatus == "Wheel command sent" }

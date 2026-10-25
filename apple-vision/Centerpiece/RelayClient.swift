@@ -51,6 +51,9 @@ final class RelayClient {
     @ObservationIgnored private var writerID: UUID?
     @ObservationIgnored private var pendingDrive: (left: Float, right: Float)?
     @ObservationIgnored private var pendingStop = false
+    @ObservationIgnored private var stopInFlight = false
+    @ObservationIgnored private var lastDrive: (left: Float, right: Float, at: TimeInterval)?
+    private static let driveHeartbeat: TimeInterval = 0.1
     @ObservationIgnored private var ownsMotion = false
     private(set) var motionStatus = "Wheel control idle"
 
@@ -84,7 +87,7 @@ final class RelayClient {
 
     func stopRobot() {
         pendingDrive = nil
-        guard ownsMotion else { return }
+        guard ownsMotion, !pendingStop, !stopInFlight else { return }
         pendingStop = true
         startWriter()
     }
@@ -103,13 +106,22 @@ final class RelayClient {
                 while !Task.isCancelled, self.runID == id {
                     if self.pendingStop {
                         self.pendingStop = false
+                        self.stopInFlight = true
+                        self.lastDrive = nil
                         // Match both wheel-command semantics and the Pi's explicit stop.
                         try await task.send(.string(Self.driveJSON(left: 0, right: 0)))
                         try await task.send(.string("{\"type\":\"stop\",\"to\":\"pi\"}"))
+                        self.stopInFlight = false
                         if self.pendingDrive == nil { self.ownsMotion = false }
                         self.motionStatus = "Stop sent"
                     } else if let drive = self.pendingDrive {
                         self.pendingDrive = nil
+                        let now = ProcessInfo.processInfo.systemUptime
+                        if let last = self.lastDrive, last.left == drive.left, last.right == drive.right,
+                           now - last.at < Self.driveHeartbeat { continue }
+                        // Record before awaiting so a timer/change callback during
+                        // the send cannot enqueue a second identical wire command.
+                        self.lastDrive = (drive.left, drive.right, now)
                         try await task.send(.string(Self.driveJSON(left: drive.left, right: drive.right)))
                         self.motionStatus = "Wheel command sent"
                     } else { return }
@@ -118,6 +130,8 @@ final class RelayClient {
                 guard self.runID == id, self.writerID == writingID else { return }
                 self.pendingDrive = nil
                 self.pendingStop = false
+                self.stopInFlight = false
+                self.lastDrive = nil
                 self.ownsMotion = false
                 let failure = error as NSError
                 print("[relay] Send failed: domain=\(failure.domain) code=\(failure.code) close=\(task.closeCode.rawValue)")
@@ -138,6 +152,7 @@ final class RelayClient {
         writerID = nil
         writer?.cancel(); writer = nil
         pendingDrive = nil; pendingStop = false
+        stopInFlight = false; lastDrive = nil
     }
 
     init(configuration: RelayConfiguration? = RelayConfiguration.bundled()) {

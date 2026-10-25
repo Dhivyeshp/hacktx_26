@@ -159,7 +159,7 @@ private struct RobotImmersiveView: View {
         }
     }
 
-    /// Every gate between a held pinch and a `drive` frame on the wire, in order.
+    /// Every gate between a held fist and a `drive` frame on the wire, in order.
     /// A quiet relay then names its own cause instead of looking like a dropped
     /// message. Zero wheels are a reason too: `sendDrive` turns them into a stop.
     private var motionBlockReason: String? {

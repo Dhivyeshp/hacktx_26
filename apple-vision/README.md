@@ -46,24 +46,25 @@ If live video stalls for three seconds, the last frame dims, the UI reports the 
 
 ## ARKit hand motions
 
-In the immersive driving view, select **Enable hand driving** and allow hand tracking. Use **thumb-to-middle-finger pinches in free space**; no puck or gaze target is required for driving. Keep both hands in the headset's tracking view, including the open hand when turning.
+In the immersive driving view, select **Enable hand driving** and allow hand tracking. Use **loose fists in free space**; no puck or gaze target is required for driving. Keep both hands in the headset's tracking view, including the open hand when turning.
 
 | Gesture | Direction | Left wheel | Right wheel |
 | --- | --- | --- | --- |
-| Both hands pinched | Straight | 0.35 | 0.35 |
-| Left hand only pinched | Left turn | 0 | 0.35 |
-| Right hand only pinched | Right turn | 0.35 | 0 |
-| Both released | Stop | 0 | 0 |
+| Both fists | Straight | 0.35 | 0.35 |
+| Left fist, right hand open | Left turn | 0 | 0.35 |
+| Right fist, left hand open | Right turn | 0.35 | 0 |
+| Both hands open | Stop | 0 | 0 |
 
-`left` and `right` in relay messages are physical wheel speeds, not hand labels. A left turn holds the left wheel still and advances the right wheel. The driving panel shows observed open/pinched state and the requested wheel pair.
+`left` and `right` in relay messages are physical wheel speeds, not hand labels. A left turn holds the left wheel still and advances the right wheel. The driving panel shows observed open/fist state and the requested wheel pair.
 
 - After enabling, interruption, whole-hand loss, or a tracking gap of 250ms, open both hands for 150ms before starting. Brief scene inactivity pauses wheel output while preserving enablement; return to the app and open both hands to resume. Backgrounding still disables driving and disconnects.
-- A new pinch combination must settle for 160ms; releasing both stops immediately. Pinch thresholds use 22mm to close and 35mm to release to avoid jitter.
-- Samples from both hands must be newer than 250ms. Uncertain fingertips immediately stop/disarm driving. If valid fingertip tracking returns within 250ms of the last valid sample, a previously completed open-hand reset is preserved; the pinch must settle again for 160ms before movement resumes. Whole-hand loss, invalid numeric data, or longer gaps require opening both hands again. No wheel command is based on an uncertain fingertip position.
-- Hand cards distinguish missing hands, uncertain thumb/middle fingertips, and stale samples. `[hands]` console messages report status changes, including whether wheels are paused for tracking recovery or require an open-hand reset.
+- A new fist combination must settle for 160ms; opening both hands stops immediately. Recognition uses the stronger of the base and middle joint bends of each index, middle and ring finger, with agreement from at least two. Thumb and fingertip joints are unused. The bend score is `clamp(1 - cos(angle), 0...1)`; close at 0.55 and reopen at 0.25 to avoid jitter. This removes hand-size dependence and tolerates one unavailable or noisy finger.
+- Samples from both hands must be newer than 250ms. If fewer than two fingers provide usable agreement, wheels stop immediately. Recovery within 250ms preserves a completed neutral reset, but the fist must settle again before resuming. Whole-hand loss, invalid numeric input or longer gaps require opening both hands again. Opening both hands at startup must be unambiguous; partly curled hands cannot satisfy the reset.
+- Hand cards distinguish missing hands, insufficient finger-bend evidence, and stale samples. `[hands]` console messages report status changes, including whether wheels are paused for tracking recovery or require an open-hand reset.
+- Finger agreement is categorical: two closed fingers agree even if one is bent more than the other. Hand cards show usable/estimated finger counts and base, middle and combined bend scores. On visionOS 26+, valid estimated finger joints are accepted within a tracked hand, following [Apple’s ARKit guidance](https://developer.apple.com/documentation/visionos-release-notes/visionos-26-release-notes); earlier systems retain the per-joint tracking requirement. `[hands:data]` logs each finger’s scores and estimated joint names once per second. Whole-hand loss and stale samples still stop driving. The startup log identifies the dual-bend recognizer and OS version.
 - The **live camera mode sends actual wheel commands** through the relay to the Pi at up to 10Hz, with immediate updates on direction changes. It requires a connected Pi peer and fresh video. **Demo photo mode stays local.** Switching camera modes disables hand driving.
 - **Enable hand driving** becomes a disabled confirmation after activation; use the separate **Stop** control to stop/disarm motion. Video loss, leaving the app, or exiting immersion also stops/disarms motion. Reconnection does not automatically resume motion. Use **Resume positioning** after a latched stop, then enable hand driving again.
-- To drop: release both drive pinches, select **Arm capsule drop**, then use the normal index-finger pinch-and-hold on **Pinch & hold to drop** for 0.8 seconds. Capsule dispensing and URL assignment are still simulated.
+- To drop: open both hands, select **Arm capsule drop**, then use the normal index-finger pinch-and-hold on **Pinch & hold to drop** for 0.8 seconds. Capsule dispensing and URL assignment are still simulated.
 
 The ARKit provider requires a physical Vision Pro. Simulator checks validate gesture logic and the relay protocol but cannot validate physical hand recognition or motor direction. Physical hardware must enforce its own stale-command stop; an app cannot deliver a stop over a disconnected network. The supplied Pi client forwards commands to the ESP32 and does not itself implement a motor watchdog.
 
@@ -76,10 +77,11 @@ The ARKit provider requires a physical Vision Pro. Simulator checks validate ges
 - `CenterpieceApp.swift`: full immersive scene, automatic launch, shared video settings, and exit/recovery window.
 - `RobotControls.swift`: observed hand-state HUD and native pinch-and-hold drop control.
 - `HandMotionController.swift`: permission and ARKit provider lifecycle in the immersive space.
-- `HandMotionInput.swift`: stable pinch recognition, tracking freshness and wheel mapping.
+- `HandMotionInput.swift`: base/middle-bend fist recognition, tracking freshness and wheel mapping.
 - `Scripts/build_relay_config.py`: allowlisted `.env` → generated app configuration.
 
 See [relay protocol and tests](docs/relay-integration.md) and [demo artwork provenance/prompt](docs/demo-artwork.md).
+For the current headset hand-driving investigation and next test, see [hand-driving status](docs/hand-driving-status.md).
 
 ## Checks
 

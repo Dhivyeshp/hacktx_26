@@ -13,8 +13,10 @@ struct HandMotionControls: View {
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 18) {
-                hand("Left", tracked: hands.leftTracked, pinched: hands.leftPinched, issue: hands.leftTrackingIssue)
-                hand("Right", tracked: hands.rightTracked, pinched: hands.rightPinched, issue: hands.rightTrackingIssue)
+                hand("Left", tracked: hands.leftTracked, closed: hands.leftFist, partial: hands.leftPartlyCurled,
+                     issue: hands.leftTrackingIssue, detail: hands.leftGripDetail)
+                hand("Right", tracked: hands.rightTracked, closed: hands.rightFist, partial: hands.rightPartlyCurled,
+                     issue: hands.rightTrackingIssue, detail: hands.rightGripDetail)
             }.frame(maxWidth: .infinity)
             HStack(spacing: 6) {
                 direction("Left", icon: "arrow.turn.up.left", value: .left)
@@ -25,8 +27,8 @@ struct HandMotionControls: View {
                 .foregroundStyle(session.handDrivingEnabled ? controlMint : .secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: 7) {
-                Text("Pinch your thumb to your middle finger.").fontWeight(.semibold)
-                Text("Both hands → straight\nLeft only → left\nRight only → right\nRelease both → stop")
+                Text("Make a loose fist. Open both hands to stop.").fontWeight(.semibold)
+                Text("Both fists → straight\nLeft fist only → left\nRight fist only → right\nBoth hands open → stop")
                     .foregroundStyle(.secondary).lineSpacing(4)
             }.font(.system(size: 11)).frame(maxWidth: .infinity, alignment: .leading)
             Button {
@@ -54,13 +56,15 @@ struct HandMotionControls: View {
         }
     }
 
-    private func hand(_ title: String, tracked: Bool, pinched: Bool, issue: String?) -> some View {
+    private func hand(_ title: String, tracked: Bool, closed: Bool, partial: Bool, issue: String?, detail: String) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: pinched ? "hand.pinch.fill" : "hand.raised.fill")
-                .font(.system(size: 28)).foregroundStyle(pinched ? controlMint : .white.opacity(tracked ? 0.8 : 0.25))
+            Image(systemName: closed ? "hand.raised.fingers.spread.fill" : "hand.raised.fill")
+                .font(.system(size: 28)).foregroundStyle(closed ? controlMint : .white.opacity(tracked ? 0.8 : 0.25))
             Text(title).font(.system(size: 10, weight: .semibold))
-            Text(tracked ? pinched ? "Pinched" : "Open" : issue ?? "Not tracked")
+            Text(tracked ? closed ? "Fist" : partial ? "Partly curled" : "Open" : issue ?? "Not tracked")
                 .font(.system(size: 9)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Text(detail).font(.system(size: 8).monospacedDigit()).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.vertical, 10)
             .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))

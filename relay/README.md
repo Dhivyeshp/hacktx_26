@@ -53,18 +53,23 @@ RELAY_TOKEN='<your relay token>' RELAY_ROOM=table \
 
 Use `--duration 30` for a bounded connection check. Successful connection alone
 does not prove hand tracking; look for `WOULD SEND TO ROBOT` lines while gesturing.
-The listener reports peers, retries dropped connections, and prints received
-commands immediately, including repeated commands while a gesture is held.
+The listener shows movement changes immediately and summarizes repeated messages
+once per second during traffic. Zero-speed drive and explicit stop are displayed
+as one logical stop. Add `--verbose` to print every raw command, including held
+movement heartbeats and both stop messages. All received commands still count;
+this display filtering does not affect the real Pi's serial output.
+
+The listener also reports peers and retries dropped connections.
 
 In the `apple-vision` app, enable hand driving on a physical Vision Pro and open
-both hands to reset. Pinches use **thumb to middle finger**:
+both hands to reset. Driving uses **loose fists**, without thumb/fingertip contact:
 
 | Gesture | Output | Left wheel | Right wheel |
 | --- | --- | --- | --- |
-| Both pinched | FORWARD | 0.35 | 0.35 |
-| Left only | TURN LEFT | 0 | 0.35 |
-| Right only | TURN RIGHT | 0.35 | 0 |
-| Release both / tracking lost | Zero-speed drive, then STOP | 0 | 0 |
+| Both fists | FORWARD | 0.35 | 0.35 |
+| Left fist, right hand open | TURN LEFT | 0 | 0.35 |
+| Right fist, left hand open | TURN RIGHT | 0.35 | 0 |
+| Open both hands / tracking lost | Zero-speed drive, then STOP | 0 | 0 |
 
 The app requires fresh, decodable Pi camera frames (within three seconds), a Pi
 peer, and live mode before allowing movement. This listener provides a Pi peer

@@ -281,7 +281,7 @@ struct DashboardView: View {
                             .frame(maxWidth: .infinity).frame(height: 30)
                     }
                     .disabled(!session.canArm)
-                    Text("Release both drive pinches before arming.")
+                    Text("Open both hands before arming.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 HStack {

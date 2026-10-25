@@ -40,19 +40,34 @@ The source contract is `../relay/clients/visionpro/RelayClient.swift` and the fo
 {"type":"drive","to":"pi","left":0.35,"right":0.35}
 ```
 
-Both pinches produce `(0.35, 0.35)`, left-hand-only `(0, 0.35)`, right-hand-only `(0.35, 0)`. These fields are wheel speeds. Directions assume positive wheel speeds mean forward, as in the supplied example.
+Both fists produce `(0.35, 0.35)`, left-fist-only `(0, 0.35)`, right-fist-only `(0.35, 0)`. These fields are wheel speeds. Directions assume positive wheel speeds mean forward, as in the supplied example.
 
-Releasing, losing tracking, suspending control, or stopping queues a zero-speed drive followed by `{"type":"stop","to":"pi"}`. The single serial writer keeps one latest pending drive and gives Stop priority, discarding superseded movement rather than building a queue. Intent is sampled at 10Hz while moving, with immediate changes. Values are bounded to ±0.6 and non-finite inputs are rejected.
+Releasing, losing tracking, suspending control, or stopping queues a zero-speed drive followed by `{"type":"stop","to":"pi"}`. The single serial writer keeps one latest pending drive and gives Stop priority, discarding superseded movement rather than building a queue. Intent is sampled at 10Hz while moving, with immediate changes. Identical drive sends within 100ms are suppressed; changed directions and restarts after stop bypass this limit. Repeated stop requests are coalesced while a stop is queued or in flight. Values are bounded to ±0.6 and non-finite inputs are rejected.
 
 Motion starts only after explicit Enable hand driving, fresh tracking, an open-hand reset, live video, and a connected Pi peer. Demo photo mode sends no movement. Reconnect does not replay the previous command. Disconnect attempts a final zero/stop before closing the old socket with bounded cleanup; network failure cannot guarantee that the robot receives it. The firmware needs its own motion timeout.
 
 The extended localhost fixture decodes masked client WebSocket frames and verifies actual outbound wheel fields/routing, a canceled 1000-intent burst, and the final stop before disconnect. `Tests/HandMotionChecks.swift` checks neutral reset, stable combinations, wheel direction, hysteresis, immediate release, tracking loss and invalid samples. These checks do not move the real robot.
 
-Fingertip uncertainty stops wheels immediately but preserves a completed neutral
-reset if valid tracking returns within 250ms of the last valid sample. A fresh
-160ms stable gesture is required before resuming. Whole-hand loss, longer gaps,
-invalid numeric data and control interruptions still require opening both hands.
-Repeated invalid samples cannot extend that recovery window. Hand cards and
-`[hands]` console messages identify thumb-tip, middle-tip and whole-hand failures.
-The hand-input checks cover short recovery, sustained loss, held pinches after
-loss, gaps between evaluation ticks, and interruptions during recovery.
+Driving uses loose fists rather than thumb/fingertip contact. The recognizer
+measures both base and middle bends on the index, middle and ring fingers,
+using the stronger bend per finger. At least two fingers must agree; one missing or noisy finger does not
+interrupt a held fist. Thumb and fingertip positions are unused. Curl scores use
+separate close/open thresholds (0.55/0.25), and a new direction settles for 160ms.
+Opening both hands stops immediately.
+
+Insufficient finger-bend evidence stops wheels immediately but preserves a
+completed neutral reset if valid samples return within 250ms. Whole-hand loss,
+longer gaps, invalid numeric input and control interruptions still require opening
+both hands. Geometry tests cover rotation/scale invariance, single-finger rejection,
+missing/noisy-finger stability and degenerate positions. Hand-input checks cover
+recovery, sustained loss, held fists after loss, stalled evaluation and interruptions.
+These checks do not establish recognition reliability on a physical headset.
+
+The two-finger case compares pose categories rather than requiring similar curl
+amounts: scores of 0.56 and 1.0 both mean closed. Regression checks cover this
+unequal-bend case. The HUD reports usable/estimated fingers and base, middle and
+combined bend. `[hands:data]` logs each finger's scores and estimated joint names
+once per second. On visionOS 26+, valid estimated joint transforms from a tracked
+hand anchor are accepted, following Apple's [ARKit release notes](https://developer.apple.com/documentation/visionos-release-notes/visionos-26-release-notes).
+Earlier OS versions still require contributing joints to be reported tracked.
+Whole-hand loss, invalid geometry and stale samples still stop movement.

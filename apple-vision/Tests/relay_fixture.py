@@ -126,16 +126,20 @@ if __name__ == '__main__':
                 assert server.connections == 2, f'Expected two connections, got {server.connections}'
                 commands = server.commands
                 drives = [c for _, c in commands if c['type'] == 'drive' and (c['left'] != 0 or c['right'] != 0)]
-                expected = [(0, 0.35), (0.35, 0.35), (0.35, 0), (0.35, 0.35)]
+                expected = [(0.3, 0.3), (0.3, 0.3), (0.3, 0), (0.3, 0),
+                            (0, 0.35), (0.35, 0.35), (0.35, 0), (0.35, 0.35)]
                 assert len(drives) == len(expected), f'Unexpected stale/coalesced drive count: {len(drives)}'
                 for command, (left, right) in zip(drives, expected):
                     assert abs(command['left'] - left) < 0.001 and abs(command['right'] - right) < 0.001
+                stops = [c for _, c in commands if c['type'] == 'stop']
+                zeros = [c for _, c in commands if c['type'] == 'drive' and c['left'] == c['right'] == 0]
+                assert len(stops) == len(zeros) == 7, 'Each stop transition must send exactly one zero/stop pair'
                 second_connection = [c for number, c in commands if number == 2]
                 assert second_connection[-1]['type'] == 'stop', 'Disconnect must send a final stop'
                 for number in (1, 2):
                     group = [c for n, c in commands if n == number]
                     assert group[-1]['type'] == 'stop'
-                print('PASS: server observed exact wheel fields, targeted Pi commands, coalesced canceled burst, and stop before disconnect')
+                print('PASS: exact wheel fields, duplicate suppression, retained heartbeat, immediate changes/restart, one zero/stop pair per transition, canceled burst, disconnect stop')
                 sys.exit(result.returncode)
             finally:
                 server.shutdown()
