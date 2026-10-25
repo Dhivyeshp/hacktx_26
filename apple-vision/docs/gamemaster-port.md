@@ -22,7 +22,7 @@ unlocks driving.
 4. Choosing a card calls `assign` on the server. The prompt is now on the
    assigned player's phone at `/prompt`, and Tina's badge is told to show the
    title.
-5. Only then does the stage switch to driving. Loose fists steer; the live Pi
+5. Only then does the stage switch to driving. Firm fists steer; the live Pi
    camera is straight ahead; arming and the pinch-and-hold drop are unchanged.
 6. After the capsule lands, the stage asks for the outcome. Mark completed or
    pass, and the next set can be generated.
@@ -125,12 +125,36 @@ returns an error.
 - Speaker identity is never assigned automatically. Deepgram separates voices
   but does not know names, so a hint is a question the Game Master answers.
 
-## The transcript and TigerDB
+## Live transcription
 
-The headset does not listen. Tina's microphone or a phone does the capture, and
-the headset reads the result over HTTP. That avoids a second microphone
-permission, a consent flow in the headset, and a duplicate charge against the
-Deepgram minute allowance.
+The headset can listen. In the expanded conversation panel, confirm that
+everyone agreed to be recorded, then choose **Listen on this headset**.
+
+It requests a one-use audio ticket, opens `/api/audio`, sends the ticket as
+the first text frame, waits for the server's `ready`, and then streams
+microphone audio as 16 kHz mono signed 16-bit PCM, the same `linear16` format
+the Tina adapter sends. The server forwards it to Deepgram and stores the
+final transcript text, never the audio.
+
+Things that are deliberate rather than incidental:
+
+- **Consent is a precondition, not a formality.** The control stays disabled
+  until it is confirmed, and the confirmation is sent to the server.
+- **A level meter, not just a status.** A connected socket does not prove a
+  working microphone, so the panel shows audio actually arriving.
+- **Backpressure stops rather than queues.** `URLSessionWebSocketTask` exposes
+  no buffered-byte count, so unacknowledged frames are counted; a microphone
+  that outruns the uplink stops listening instead of sending minutes of stale
+  audio.
+- **The microphone is released** when the panel closes, on leaving the
+  immersive space, and on backgrounding.
+- One room can have one stream. If a phone or Tina is already listening the
+  panel says so rather than fighting for the slot.
+
+Tina's microphone or a phone can still do the capture instead; the headset
+then just reads the result over HTTP.
+
+## The transcript and TigerDB
 
 The server dual-writes every final segment into a TigerDB hypertable, and the
 headset pages forward from the newest segment it already holds rather than

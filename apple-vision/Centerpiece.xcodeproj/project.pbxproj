@@ -36,6 +36,7 @@
 		000000000000000000000057 /* space-grotesk-500.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000056 /* space-grotesk-500.ttf */; };
 		000000000000000000000059 /* space-grotesk-600.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000058 /* space-grotesk-600.ttf */; };
 		00000000000000000000005B /* space-grotesk-700.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000005A /* space-grotesk-700.ttf */; };
+		000000000000000000000071 /* LiveAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000070 /* LiveAudioCapture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -69,6 +70,7 @@
 		000000000000000000000056 /* space-grotesk-500.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space-grotesk-500.ttf; sourceTree = "<group>"; };
 		000000000000000000000058 /* space-grotesk-600.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space-grotesk-600.ttf; sourceTree = "<group>"; };
 		00000000000000000000005A /* space-grotesk-700.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space-grotesk-700.ttf; sourceTree = "<group>"; };
+		000000000000000000000070 /* LiveAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAudioCapture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +116,7 @@
 				000000000000000000000046 /* ConversationPanel.swift */,
 				000000000000000000000048 /* TokensPanel.swift */,
 				00000000000000000000005C /* Fonts */,
+				000000000000000000000070 /* LiveAudioCapture.swift */,
 			);
 			path = Centerpiece;
 			sourceTree = "<group>";
@@ -253,6 +256,7 @@
 				000000000000000000000045 /* DriveControlsView.swift in Sources */,
 				000000000000000000000047 /* ConversationPanel.swift in Sources */,
 				000000000000000000000049 /* TokensPanel.swift in Sources */,
+				000000000000000000000071 /* LiveAudioCapture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -287,6 +291,7 @@
 				DEVELOPMENT_TEAM = 65WRU5S3K4;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Transcribe the table's conversation while everyone has agreed to be recorded. Audio is not stored.";
 				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "Hold a firm fist in each hand to drive the robot left, right, and forward.";
 				INFOPLIST_KEY_CFBundleDisplayName = Centerpiece;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -310,6 +315,7 @@
 				DEVELOPMENT_TEAM = 65WRU5S3K4;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Transcribe the table's conversation while everyone has agreed to be recorded. Audio is not stored.";
 				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "Hold a firm fist in each hand to drive the robot left, right, and forward.";
 				INFOPLIST_KEY_CFBundleDisplayName = Centerpiece;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

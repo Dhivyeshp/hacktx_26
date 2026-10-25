@@ -100,6 +100,23 @@ struct DestinaClientChecks {
         let paged = configuration.request("transcript", query: [URLQueryItem(name: "since", value: "10")])!
         precondition(paged.url?.query == "since=10")
 
+        // The audio socket must ride the same origin, upgraded, and must not
+        // inherit a query string from the base URL.
+        precondition(DestinaConfiguration.audioURL(
+            base: URL(string: "https://destina.example")!, path: "/api/audio")?.absoluteString
+            == "wss://destina.example/api/audio")
+        precondition(DestinaConfiguration.audioURL(
+            base: URL(string: "http://localhost:3000")!, path: "/api/audio")?.absoluteString
+            == "ws://localhost:3000/api/audio")
+        precondition(DestinaConfiguration.audioURL(
+            base: URL(string: "https://destina.example")!, path: "api/audio")?.absoluteString
+            == "wss://destina.example/api/audio")
+
+        let ticket = try decoder.decode(
+            AudioTicket.self,
+            from: Data(#"{"token":"abc","expiresAt":1792919421361,"path":"/api/audio"}"#.utf8))
+        precondition(ticket.path == "/api/audio" && ticket.token == "abc")
+
         print("Destina client checks passed")
     }
 

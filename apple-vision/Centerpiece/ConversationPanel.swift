@@ -8,6 +8,7 @@ import SwiftUI
 struct ConversationPanel: View {
     @Bindable var client: DestinaClient
     @Bindable var store: GameMasterStore
+    @Bindable var audio: LiveAudioCapture
     var compact = true
 
     private var feed: GameMasterFeed? { client.feed }
@@ -37,7 +38,7 @@ struct ConversationPanel: View {
                 Eyebrow("Live conversation")
                 Spacer()
                 HStack(spacing: 7) {
-                    StatusDot(ok: conversation?.status == "live")
+                    StatusDot(ok: isLive)
                     Text(statusLabel)
                         .font(Destina.ui(11))
                         .foregroundStyle(Destina.textMuted)
@@ -49,15 +50,29 @@ struct ConversationPanel: View {
             Text(sourceLabel)
                 .font(Destina.ui(11))
                 .foregroundStyle(Destina.textMuted)
+            if compact, audio.isActive {
+                Text("This headset is listening.")
+                    .font(Destina.ui(11, weight: .medium))
+                    .foregroundStyle(Destina.sage)
+            }
         }
     }
 
     private var statusLabel: String {
-        switch conversation?.status {
-        case "live": return "Listening"
-        case "paused": return "Paused"
-        default: return "Not listening"
+        switch audio.state {
+        case .starting: return "Connecting"
+        case .listening: return "Listening here"
+        case .failed: return "Stopped"
+        case .idle:
+            switch conversation?.status {
+            case "live": return "Listening elsewhere"
+            case "paused": return "Paused"
+            default: return "Not listening"
+            }
         }
+    }
+    private var isLive: Bool {
+        audio.state == .listening || conversation?.status == "live"
     }
 
     private var sourceLabel: String {
@@ -158,10 +173,75 @@ struct ConversationPanel: View {
         return date.formatted(date: .omitted, time: .shortened)
     }
 
-    /// The expanded panel. Speaker relabeling, prepared prompts and clearing
-    /// live here rather than in the always-visible rail.
+    /// Capture on the headset. Recording needs everyone's agreement, so the
+    /// control stays disabled until the Game Master confirms it, and the
+    /// consent is sent to the server rather than assumed.
+    @ViewBuilder
+    private var listening: some View {
+        Rectangle().fill(Destina.line).frame(height: 1)
+        Eyebrow("Listen on this headset")
+        if conversation?.transcriptionReady == false {
+            Text("Hosted transcription is not configured on the server. Pasted test text still works.")
+                .font(Destina.ui(11))
+                .foregroundStyle(Destina.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            if case .failed(let message) = audio.state {
+                Text(message)
+                    .font(Destina.ui(11))
+                    .foregroundStyle(Destina.tanHover)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if audio.isActive {
+                HStack(spacing: 12) {
+                    Button("Stop listening") { audio.stop() }
+                        .buttonStyle(.destinaDestructive)
+                    // A connected socket is not the same as a working
+                    // microphone. The meter shows audio actually arriving.
+                    ProgressView(value: Double(audio.level))
+                        .tint(Destina.sage)
+                        .frame(width: 120)
+                    Text(audio.state == .listening ? "Microphone open" : "Connecting…")
+                        .font(Destina.ui(11))
+                        .foregroundStyle(Destina.textMuted)
+                }
+            } else {
+                Toggle("Everyone at the table agreed to be recorded", isOn: $store.recordingConsent)
+                    .font(Destina.ui(12))
+                    .tint(Destina.tan)
+                HStack(spacing: 12) {
+                    Button("Listen on this headset") { startListening() }
+                        .buttonStyle(.destinaPrimary)
+                        .disabled(!store.recordingConsent || client.isBusy("audio"))
+                    if conversation?.status == "live" {
+                        Text("Another device is already listening for this room.")
+                            .font(Destina.ui(11))
+                            .foregroundStyle(Destina.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text("Destina stores the transcript text, never the audio. Minutes count against the room's allowance.")
+                    .font(Destina.ui(10))
+                    .foregroundStyle(Destina.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func startListening() {
+        Task {
+            guard let ticket = await client.audioTicket(), let base = client.serverBase else { return }
+            await audio.start(ticket: ticket, base: base)
+            // Pick the new status up straight away instead of waiting a poll.
+            await client.refresh()
+        }
+    }
+
+    /// The expanded panel. Listening, speaker relabeling, prepared prompts and
+    /// clearing live here rather than in the always-visible rail.
     private var controls: some View {
         VStack(alignment: .leading, spacing: 14) {
+            listening
             Rectangle().fill(Destina.line).frame(height: 1)
             if !client.speakerLabels.isEmpty {
                 Eyebrow("Who is speaking?")

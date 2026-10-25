@@ -163,6 +163,8 @@ struct StagePanel: View {
                 session.emergencyStop(reason: "App moved to background")
                 relay.disconnect(reason: "scene backgrounded")
                 client.stop()
+                // Never hold the microphone open while the app is not visible.
+                experience.audio.stop()
             @unknown default:
                 session.emergencyStop(reason: "Unknown scene state")
                 relay.stopRobot()
@@ -320,6 +322,7 @@ struct StagePanel: View {
         session.emergencyStop(reason: "Game Master view closed")
         relay.disconnect(reason: "dashboard disappeared")
         client.stop()
+        experience.audio.stop()
         session.controlsSuspended = false
     }
 

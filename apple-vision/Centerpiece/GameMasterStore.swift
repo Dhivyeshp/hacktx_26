@@ -31,6 +31,9 @@ final class GameMasterStore {
     var selectedRewardRoundID: String?
     var draftAwards: [String: RewardAward] = [:]
     var goalDraft: String = ""
+    /// Confirmed by the Game Master before the headset microphone opens.
+    /// Not persisted: consent is asked for again each session.
+    var recordingConsent = false
     var pastedSpeaker: String = ""
     var pastedText: String = ""
 

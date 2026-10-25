@@ -239,6 +239,33 @@ final class DestinaClient {
         return changed
     }
 
+    /// Consent is the server's own precondition, so it is passed explicitly
+    /// rather than assumed. `linear16` matches what the headset can encode
+    /// without pulling in a container format.
+    func audioTicket() async -> AudioTicket? {
+        guard isConfigured, configurationError == nil, !busy.contains("audio") else { return nil }
+        // A ticket is one-use and expires in 60 seconds, so a double press
+        // must not quietly burn one.
+        busy.insert("audio")
+        defer { busy.remove("audio") }
+        do {
+            let body = try JSONSerialization.data(
+                withJSONObject: ["consent": true, "format": "linear16"], options: [.sortedKeys])
+            let ticket: AudioTicket = try await send("audio-ticket", method: "POST", body: body)
+            lastError = nil
+            return ticket
+        } catch let error as DestinaError {
+            record(error)
+            return nil
+        } catch {
+            lastError = "Could not prepare a listening connection."
+            return nil
+        }
+    }
+
+    /// Where the audio socket lives, for the capture layer to build its URL.
+    var serverBase: URL? { configuration?.base }
+
     @discardableResult
     func approveRewards(roundID: String, awards: [RewardAward]) async -> Bool {
         let payload = awards.map { award in

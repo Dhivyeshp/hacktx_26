@@ -46,4 +46,15 @@ struct DestinaConfiguration {
 
     /// The player-facing page for a prompt, shown as a preview on the headset.
     var promptURL: URL { base.appendingPathComponent("prompt") }
+
+    /// The audio bridge, on the same origin as the API. The ticket names the
+    /// path, so an older server that moves it keeps working.
+    static func audioURL(base: URL, path: String) -> URL? {
+        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme else { return nil }
+        components.scheme = scheme == "http" ? "ws" : "wss"
+        components.path = path.hasPrefix("/") ? path : "/" + path
+        components.query = nil
+        return components.url
+    }
 }

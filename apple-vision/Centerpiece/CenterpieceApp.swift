@@ -10,6 +10,7 @@ final class ImmersiveExperience {
     let relay = RelayClient()
     let hands = HandMotionController()
     let destina = DestinaClient()
+    let audio = LiveAudioCapture()
     var useLiveVideo = RelayConfiguration.bundled() != nil
     var demoVideoAvailable = true
     var hasAttemptedLaunch = false
@@ -190,7 +191,7 @@ private struct RobotImmersiveView: View {
                 .preferredColorScheme(.dark)
             }
             Attachment(id: "conversation") {
-                ConversationPanel(client: client, store: store, compact: true)
+                ConversationPanel(client: client, store: store, audio: experience.audio, compact: true)
                     .preferredColorScheme(.dark)
             }
             Attachment(id: "stage") {
@@ -232,6 +233,7 @@ private struct RobotImmersiveView: View {
         }
         .onDisappear {
             session.emergencyStop(reason: "Immersive view closed")
+            experience.audio.stop()
             experience.hands.stop(model: session)
             experience.relay.disconnect(reason: "immersive view disappeared")
             client.stop()
@@ -259,7 +261,8 @@ private struct RobotImmersiveView: View {
                     SessionPanel(client: client, store: store, onClose: { store.openPanel = nil })
                 case .conversation:
                     VStack(alignment: .trailing, spacing: 14) {
-                        ConversationPanel(client: client, store: store, compact: false)
+                        ConversationPanel(client: client, store: store,
+                                          audio: experience.audio, compact: false)
                         Button("Done") { store.openPanel = nil }
                             .buttonStyle(.destinaPrimary)
                     }

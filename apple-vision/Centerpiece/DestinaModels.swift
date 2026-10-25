@@ -146,6 +146,14 @@ struct TranscriptPage: Codable, Sendable {
     var speakers: [SpeakerActivity] = []
 }
 
+/// A one-use credential for the `/api/audio` bridge. Valid for 60 seconds and
+/// consumed on first use, so it is requested immediately before connecting.
+struct AudioTicket: Codable, Sendable {
+    let token: String
+    let expiresAt: Double
+    let path: String
+}
+
 struct SpeakerActivity: Codable, Identifiable, Equatable, Sendable {
     let speakerLabel: String
     let segments: Int
