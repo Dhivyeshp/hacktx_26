@@ -168,14 +168,21 @@ other players can join separate browser sessions and approve manual interests.
 
 ### Visual direction
 
-Destina uses relics for the objects Tina carries. Public URLs and API field names
-remain compatible with the existing tap tags and control adapter. The player
-interface uses Cormorant Unicase for the lowercase destina wordmark and Space Grotesk
-for headings, body text, and controls, with parchment panels, charcoal and moss, and
-flat rust-colored actions. The private preview presents questions as numbered
-reading rows. Gradients, glow effects, decorative rune graphics, sparkle icons,
-and glass effects are removed. Profile excerpts remain verbatim.
+The supplied [design spec](docs/destina-design-spec.md) is implemented with shared
+color and typography tokens in `src/design-tokens.css`. The existing layout stays
+in place. Cormorant Unicase handles the lowercase destina wordmark and relic
+titles, Cormorant Garamond handles italic headlines, and Space Grotesk handles
+body text and controls. All three fonts and their SIL licenses are bundled in
+`public/fonts` so players do not need Google Fonts access.
 
-Cormorant Unicase and Space Grotesk are served locally from `public/fonts`,
-including their SIL Open Font License notices. Players do not need a Google Fonts
-connection to load the typography.
+The profile uses a dark Instagram panel and a cream interests panel. Removable
+interest rows expose 44px controls and kept counts; removing a saved item opens
+an unsaved edit. The imported-profile summary uses a cream inset box and reports
+only the bio/captions actually stored. The original source excerpts stay verbatim.
+The provided ring-and-star logo, light variant, app icon, and website favicon are
+in `public`. The lowercase wordmark and omitted tagline follow the explicit
+branding preferences from the app design session.
+
+Destina uses relics for the objects Tina carries. Existing public URLs and API
+field names remain compatible with the tap tags and control adapter. The private
+preview uses the same design tokens and a numbered question reading layout.

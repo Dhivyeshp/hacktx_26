@@ -21,6 +21,8 @@ import type {
   InterestSuggestion,
 } from "../shared/types";
 import "./style.css";
+import { interestLabel, importSummary } from "./profile-copy";
+import { interestSelectionChanged } from "./profile-state";
 async function api(path: string, body?: unknown, method?: string) {
   const response = await fetch("/api" + path, {
     method: method || (body ? "POST" : "GET"),
@@ -161,7 +163,15 @@ function App() {
   return (
     <div className="app-shell">
       <header className="header">
-        <a className="brand" href="/">
+        <a className="brand" href="/" aria-label="destina home">
+          <img
+            className="brand-mark"
+            src="/logo-mark-dark.svg"
+            alt=""
+            aria-hidden="true"
+            width="52"
+            height="52"
+          />
           <span>destina</span>
         </a>
         {s && (
@@ -472,10 +482,7 @@ function Profile({
       .map((i) => i.label.toLowerCase()),
     ...labels.map((label) => label.toLowerCase()),
   ]).size;
-  const dirty =
-    labels.length > 0 ||
-    JSON.stringify([...selected].sort()) !==
-      JSON.stringify(approved.map((i) => i.id).sort());
+  const dirty = interestSelectionChanged(s.me.interests, selected, labels);
   const saved = !editing && approved.length > 0;
   const cancel = () => {
     setSelected(approved.map((i) => i.id));
@@ -506,11 +513,7 @@ function Profile({
       <div className="page-heading">
         <div>
           <span className="eyebrow">YOUR PROFILE</span>
-          <h1>
-            A little
-            <br className="mobile-break" />
-            <em> about you.</em>
-          </h1>
+          <h1>A little about you.</h1>
           <p>
             What do you spend your time on? What could you talk about for hours?
             That’s a good place to start.
@@ -549,13 +552,10 @@ function Profile({
                 : "You can add interests without connecting"}
           </div>
           {s.sources.some((source) => source.kind !== "manual") && (
-            <div className="notice" style={{ flexDirection: "column" }}>
+            <div className="notice import-summary">
               <p>
-                Your saved profile has{" "}
-                {s.sources.filter((source) => source.kind === "bio").length}{" "}
-                profile excerpt(s) and{" "}
-                {s.sources.filter((source) => source.kind === "caption").length}{" "}
-                captions. Questions use only interests you approve.
+                {importSummary(s.sources)} Questions use only interests you
+                approve.
               </p>
               {!readOnly && (
                 <button
@@ -612,9 +612,35 @@ function Profile({
                       : "Your interests are saved"}
                 </span>
               </div>
+              <p className="interest-count">{approved.length} kept</p>
               <ul className="saved-interests" aria-label="Saved interests">
                 {approved.map((i) => (
-                  <li key={i.id}>{i.label}</li>
+                  <li key={i.id}>
+                    <div className="interest-row">
+                      <span className="interest-name">
+                        {interestLabel(i.label)}
+                      </span>
+                      {!readOnly && (
+                        <button
+                          className="interest-toggle"
+                          type="button"
+                          aria-label={`Remove ${interestLabel(i.label)}`}
+                          disabled={!!busy}
+                          onClick={() => {
+                            setSelected(
+                              approved
+                                .filter((item) => item.id !== i.id)
+                                .map((item) => item.id),
+                            );
+                            setEditing(true);
+                            setSavedRecently(false);
+                          }}
+                        >
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      )}
+                    </div>
+                  </li>
                 ))}
               </ul>
               {!readOnly && (
@@ -645,31 +671,39 @@ function Profile({
             <>
               {s.me.interests.length ? (
                 <div className="interest-choices">
-                  {s.me.interests.map((i) => (
-                    <button
-                      key={i.id}
-                      type="button"
-                      disabled={!!busy}
-                      aria-pressed={selected.includes(i.id)}
-                      className={
-                        selected.includes(i.id)
-                          ? "interest selected"
-                          : "interest"
-                      }
-                      onClick={() =>
-                        setSelected(
-                          selected.includes(i.id)
-                            ? selected.filter((id) => id !== i.id)
-                            : [...selected, i.id],
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        {selected.includes(i.id) ? "✓" : "+"}
-                      </span>
-                      {i.label}
-                    </button>
-                  ))}
+                  <p className="interest-count" aria-live="polite">
+                    {selected.length} of {s.me.interests.length} kept
+                  </p>
+                  {s.me.interests.map((i) => {
+                    const kept = selected.includes(i.id);
+                    const label = interestLabel(i.label);
+                    return (
+                      <div
+                        key={i.id}
+                        className={`interest-row ${kept ? "" : "not-kept"}`}
+                      >
+                        <span className="interest-name">{label}</span>
+                        <span className="interest-state">
+                          {kept ? "Kept" : "Not kept"}
+                        </span>
+                        <button
+                          className="interest-toggle"
+                          type="button"
+                          disabled={!!busy}
+                          aria-label={`${kept ? "Remove" : "Keep"} ${label}`}
+                          onClick={() =>
+                            setSelected(
+                              kept
+                                ? selected.filter((id) => id !== i.id)
+                                : [...selected, i.id],
+                            )
+                          }
+                        >
+                          <span aria-hidden="true">{kept ? "×" : "+"}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="interest-empty">
@@ -695,6 +729,11 @@ function Profile({
                   <span>{dirty ? "Unsaved changes" : "No changes yet"}</span>
                   <span>{total} of 12 selected</span>
                 </div>
+                {total === 0 && approved.length > 0 && (
+                  <p className="inline-error">
+                    Keep at least one interest, or add a new one before saving.
+                  </p>
+                )}
                 {total > 12 && (
                   <p className="inline-error" role="alert">
                     Choose no more than 12 interests before saving.

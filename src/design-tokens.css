@@ -1,0 +1,29 @@
+:root {
+  --bg: #262722;
+  --bg-raised: #2f302a;
+  --line: #45463f;
+  --cream: #ece8dd;
+  --cream-2: #dedcd1;
+  --line-light: #c9c6ba;
+  --text: #eeeae0;
+  --text-muted: #a8a69b;
+  --ink: #26271f;
+  --ink-muted: #5c5b52;
+  --tan: #c49a63;
+  --tan-hover: #d8b27f;
+  --tan-deep: #9a7244;
+  --sage: #8e9c7e;
+  --font-title: "Cormorant Unicase", serif;
+  --font-head: "Cormorant Garamond", serif;
+  --font-ui: "Space Grotesk", sans-serif;
+  --muted: var(--text-muted);
+  --gold: var(--tan);
+  --border: var(--line);
+  --panel: var(--cream);
+  --focus: var(--tan);
+  font-family: var(--font-ui);
+  font-synthesis: none;
+  font-weight: 400;
+  background: var(--bg);
+  color: var(--text);
+}
