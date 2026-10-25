@@ -318,6 +318,7 @@ static uint8_t readShiftButtons() {
   digitalWrite(PIN_HC165_LOAD, LOW);
   delayMicroseconds(1);
   digitalWrite(PIN_HC165_LOAD, HIGH);
+  delayMicroseconds(1);
   uint8_t pressed = 0;
   for (int i = 0; i < 8; i++) {
     if (digitalRead(PIN_HC165_DATA) == LOW) pressed |= 1 << i;
@@ -558,10 +559,12 @@ static void renderFace(uint32_t now) {
 
 void setup() {
   Serial.setRxBufferSize(2048);
-  Serial.setTxTimeoutMs(0);  // never stall the animation when nobody is reading
+  // Plugged in but nobody reading: give up after 10 ms and drop output until a
+  // reader shows up. (0 makes HWCDC retry ~forever once its buffer fills.)
+  Serial.setTxTimeoutMs(10);
   Serial.begin(115200);
   pinMode(PIN_BTN_START, INPUT_PULLUP);
-  pinMode(PIN_HC165_DATA, INPUT);
+  pinMode(PIN_HC165_DATA, INPUT_PULLUP);
   pinMode(PIN_HC165_LOAD, OUTPUT);
   pinMode(PIN_HC165_CLK, OUTPUT);
   digitalWrite(PIN_HC165_LOAD, HIGH);
