@@ -70,11 +70,16 @@ camera feed needed by the app.
 ## 3. Enable movement on the headset
 
 1. Enter the immersive view and select live Pi video. Confirm the picture updates.
-2. Select a player and question, then choose **Ready to drive**.
+2. Generate a set of prompts and choose one. Assigning it on the server is what
+   unlocks driving: until a prompt is on the table the hand cards read
+   `Wheels idle · no prompt is assigned yet`. Clearing it stops driving again.
 3. Select **Enable hand driving** and allow hand-tracking permission.
 4. Close any settings panel and keep both hands visible to the headset.
 5. Open both hands until the panel says it is ready.
 6. Make a loose fist with either or both hands and hold the pose steady.
+
+Without a Destina server configured the app runs in demo mode, where the
+mocked table still gates driving the same way but no robot commands are sent.
 
 No gaze target or on-screen drag is needed while driving. Keep the other hand
 visible and open when making a turn.

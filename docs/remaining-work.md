@@ -16,12 +16,13 @@ Updated October 25, 2026. This separates working browser features from integrati
 
 - [ ] Test voice introductions on real iOS and Android phones, including microphone denial, noisy rooms and keyboard dictation fallback.
 
-- [ ] Configure the server's `GM_API_KEY` and provision it securely to the trusted Vision Pro adapter. Use explicit --control links for browser testing; default links remain read-only.
-- [ ] Connect the web app to the existing relay at `wss://centerpiece-relay.onrender.com/ws`. The relay exists; the Destina adapter is still missing.
-- [ ] Map Vision Pro requests to the protected room operations for generating prompts, choosing or editing a question, selecting valid targets and recording completed or passed outcomes.
-- [ ] Agree on room IDs, message schemas and authentication across Destina, Vision Pro and Tina. The existing relay contract and Destina snapshots need an explicit mapping.
-- [ ] Send role-filtered updates, retain server membership checks and recover authoritative state after reconnects. Keep private missions and the GM feed out of public channels.
-- [ ] Run one full round with at least three real phones and Vision Pro: join, approve interests, generate once, choose, tap, reveal private text, record an outcome and advance.
+- [x] Configure the server's `GM_API_KEY` and provision it to the Vision Pro through `apple-vision/.env`. It is a global control credential, so a build carrying it must not be distributed. Use explicit --control links for browser testing; default links remain read-only.
+- [ ] Connect the web app to the existing relay at `wss://centerpiece-relay.onrender.com/ws`. The relay exists; the Destina adapter is still missing. The Vision Pro does not need it, because it reaches Destina over HTTP directly.
+- [x] Map Vision Pro requests to the protected room operations. The headset calls the bearer `/api/control/rooms/:code/*` routes for generating, assigning, editing, completing, passing, speaker mapping, rewards, finishing and resetting.
+- [x] Agree on room IDs, schemas and authentication between Destina and the Vision Pro. `DESTINA_ROOM` names the room; `Centerpiece/DestinaModels.swift` mirrors `shared/types.ts`. Tina's own mapping is still open.
+- [x] Recover authoritative state after reconnects. The headset polls `GET /api/control/rooms/:code/questions` every four seconds behind an overlap guard, a generation token and a room-version gate. Private missions stay out of the Vision Pro feed; only their presence is shown.
+- [ ] Run one full round with at least three real phones and Vision Pro: join, approve interests, generate once, choose, tap, reveal private text, record an outcome and advance. The server side of this loop is verified against a local server; the headset half needs a physical Vision Pro.
+- [ ] Connect a TigerDB service and run `npm run tigerdb:migrate`. The dual-write, the read endpoint and the unconfigured fallback are covered by tests; a real hypertable has not been exercised yet. See [TigerDB](tigerdb.md).
 - [ ] Write `https://destina.ngrok.app/prompt` to new NFC tags and verify iOS and Android taps open the browser used for onboarding. Existing tags remain supported through redirects.
 - [ ] Verify the new Instagram redirect URI is saved in Meta and complete one real OAuth round trip on the new domain. Local configuration is updated; saving Meta's settings alone does not verify a full login.
 

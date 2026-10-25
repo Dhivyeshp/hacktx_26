@@ -1,6 +1,8 @@
 # Centerpiece · Vision Pro
 
-A full immersive visionOS app with a compact overlay for the robot camera: photo avatars and player-specific questions on the left, a transcript on the right, and a clear central view. There is no bottom dock or drop-position marker. Selecting **Ready to drive** swaps the question panel for small driving/drop controls.
+The Destina Game Master, in full immersion. The Pi camera is straight ahead, the roster and the live conversation are angled in from the sides, and a stage panel below changes with what you are doing: choose a prompt, drive Tina to the person it is for, then record how the turn went.
+
+It runs against the same Destina server the browser console at `/gm` uses. See [the Game Master port](docs/gamemaster-port.md) for the full picture.
 
 ## Open the right project
 
@@ -8,39 +10,45 @@ Open `Centerpiece.xcodeproj` **from this checkout**, select the Centerpiece sche
 
 ## Immersive presentation
 
-The app starts in **full immersion**: passthrough and other apps are hidden. A large camera screen with the player/question/transcript overlay is positioned in front of the wearer. The screen is initialized at head height and remains still so you can look toward either side panel. The Pi feed is still a normal 2D camera image; this is a wide theater-style presentation, not 360-degree video.
+The app starts in **full immersion**: passthrough and other apps are hidden. The workspace is five panels placed once at head height and then left still, so you look from one to another instead of the interface chasing your gaze. The Pi feed is still a normal 2D camera image; this is a wide theater-style presentation, not 360-degree video.
 
 - **Exit immersive** in the top bar returns to the small launcher window.
-- **Enter immersive view** opens the space again. Video source settings and the selected player/question are retained.
+- **Enter immersive view** opens the space again. Video source settings are retained, and the assigned prompt comes back from the server.
 - If opening is canceled or fails, the launcher explains what happened and offers retry.
 - A system dismissal also restores the launcher and stops/disarms motion. It does not automatically reopen until you request it.
-- Camera settings and the shared-page preview open as panels inside the immersive dashboard.
+- Camera settings, Tina Tokens, session controls and the player preview open as panels nearer the wearer. Opening one suspends the controls underneath, which keeps the wheels still.
 
-## Add the relay token
+## Add the relay token and the Destina server
 
 1. In this `apple-vision` directory, edit `.env`. If it is missing, copy `.env.example` to `.env`.
 2. Set `RELAY_TOKEN` to the value from Render → centerpiece-relay → Environment. Do not put it in Swift source or chat.
 3. Leave `RELAY_URL=wss://centerpiece-relay.onrender.com/ws` and `RELAY_ROOM=table` unless your relay uses a different endpoint/room.
 4. Build and run again. Every build reads `.env` into the development app's generated `RelayConfig.plist`; `.env` itself is not copied into the bundle and is ignored by Git. Changing `.env` requires rebuilding/reinstalling.
 5. With a token configured, the app automatically connects and waits for binary JPEGs from the Pi in the same room. Camera settings (top right) let you reconnect or switch to the demo photo.
+6. For the game itself, also set `DESTINA_URL`, `DESTINA_ROOM` and `GM_API_KEY`. Leave `DESTINA_URL` blank to build a demo-only app with no server connection. `DESTINA_URL` must be `https://` unless it points at localhost, because the key would otherwise travel in the clear.
 
-The development app contains the token in its generated configuration so it can authenticate on the headset. Treat the built app as a credential-bearing artifact. Do not distribute it publicly with a shared relay token; use scoped short-lived credentials for distribution. The build script never sources `.env` as shell code or prints its values.
+The development app contains both credentials in its generated configuration so it can authenticate on the headset. Treat the built app as a credential-bearing artifact.
+
+`GM_API_KEY` is a **global** Game Master credential, not a room-scoped one: a build that carries it can change any room on that server, and it is the same key the bearer control API accepts. Do not distribute such a build, and do not share it with the relay token. The build script allowlists exactly the six configuration keys, never sources `.env` as shell code, and never prints its values.
 
 ## Live and mocked features
 
-**Live:** the WebSocket video connection, connection/presence state, JPEG decoding, stale-frame detection, reconnection, ARKit hand input on the headset, and wheel commands after enabling hand driving in live mode. The implementation follows the sibling relay's actual protocol, using its supported bearer header instead of placing the token in the URL. Video keeps its original aspect ratio.
+**Live:** the whole Game Master loop against the Destina server. Real joined players and their interest readiness, Muse and question-library generation, prompt editing and assignment, completing and passing, the transcript with speaker confirmation, Tina Tokens approval and devnet settlement, finishing and resetting. Also the WebSocket video connection, presence, JPEG decoding, stale-frame detection, reconnection, ARKit hand input on the headset, wheel commands after enabling hand driving in live mode, and the badge-screen update sent when a prompt is assigned. Video keeps its original aspect ratio.
 
-**Mocked:** player identities/photos, questions, transcript, URL updates and dispensing. Movement is mocked only in demo photo mode. The transcript is explicitly labeled Demo because the shared contract does not yet define transcript messages. The app sends `drive` and `stop` commands to the Pi; it does not send a real dispense command yet. The illustrative photo is generated artwork, not a camera capture.
+**Mocked:** capsule dispensing. The app sends `drive`, `stop` and `screen` commands to the Pi; it does not send a real dispense command yet, so the drop and its acknowledgment are still local. Movement is mocked only in demo photo mode. With no `DESTINA_URL` configured the whole table is the old local demo, behind a visible notice. The illustrative photo is generated artwork, not a camera capture.
+
+The headset does not listen to the room. Tina's microphone or a phone does the capture; the headset reads the resulting transcript over HTTP, served from [TigerDB](../docs/tigerdb.md) when it is configured.
 
 If live video stalls for three seconds, the last frame dims, the UI reports the outage, and mock driving/drop is stopped. It never silently replaces an interrupted live feed with a demo photo. Switch to demo photo explicitly to test without the Pi.
 
 ## Try the game flow
 
-1. Select a circular player photo and a question.
-2. Choose **Ready to drive**, then **Enable hand driving**. Allow hand tracking and open both hands.
-3. Stop and select **Arm capsule drop**, then pinch-and-hold **Pinch & hold to drop** for 0.8 seconds. Movement disarms dropping.
-4. The local demo assigns the shared page, waits for its simulated acknowledgment, then dispenses. **Page preview** shows the assigned question.
-5. Finish the round before selecting another question. Every capsule would show the latest assigned question; the mock page retains that question until replaced.
+1. Wait for everyone to join and save interests. The roster on the left shows who is ready.
+2. Choose a spotlight and optionally type a line of context, then select **Get three Muse prompts**, **From the conversation**, or the free **Use the question library**.
+3. Pick a card with **Use this prompt**, or **Edit wording** first. This assigns it on the server, so the prompt appears on that player's phone at `/prompt` straight away, and Tina's badge is told to show the title.
+4. The stage switches to driving. Select **Enable hand driving**, allow hand tracking and open both hands. Without an assigned prompt the wheels stay still and say so.
+5. Stop and select **Arm capsule drop**, then pinch-and-hold **Pinch & hold to drop** for 0.8 seconds. Movement disarms dropping.
+6. Record the outcome with **Mark completed** or **Pass this prompt**, then generate the next set. **Page preview** shows what the player sees.
 
 **Stop** cancels pending local work, latches motion off, and sends zero wheel speeds plus a stop message when the relay connection is available. Open Camera settings to simulate video loss or request failures and inspect the local event log.
 
@@ -67,23 +75,29 @@ In the immersive driving view, select **Enable hand driving** and allow hand tra
 - Finger agreement is categorical: two closed fingers agree even if one is bent more than the other. Hand cards show usable/estimated finger counts and base, middle and combined bend scores. On visionOS 26+, valid estimated finger joints are accepted within a tracked hand, following [Apple’s ARKit guidance](https://developer.apple.com/documentation/visionos-release-notes/visionos-26-release-notes); earlier systems retain the per-joint tracking requirement. `[hands:data]` logs each finger’s scores and estimated joint names once per second. Whole-hand loss and stale samples still stop driving. The startup log identifies the dual-bend recognizer and OS version.
 - The **live camera mode sends actual wheel commands** through the relay to the Pi at up to 10Hz, with immediate updates on direction changes. It requires a connected Pi peer and fresh video. **Demo photo mode stays local.** Switching camera modes disables hand driving.
 - **Enable hand driving** becomes a disabled confirmation after activation; use the separate **Stop** control to stop/disarm motion. Video loss, leaving the app, or exiting immersion also stops/disarms motion. Reconnection does not automatically resume motion. Use **Resume positioning** after a latched stop, then enable hand driving again.
-- To drop: open both hands, select **Arm capsule drop**, then use the normal index-finger pinch-and-hold on **Pinch & hold to drop** for 0.8 seconds. Capsule dispensing and URL assignment are still simulated.
+- To drop: open both hands, select **Arm capsule drop**, then use the normal index-finger pinch-and-hold on **Pinch & hold to drop** for 0.8 seconds. Capsule dispensing is still simulated; the prompt itself was already assigned on the server when it was chosen.
+- Hand driving also requires an assigned prompt. Without one the hand cards read `Wheels idle · no prompt is assigned yet`, and clearing the prompt on the server stops driving.
 
 The ARKit provider requires a physical Vision Pro. Simulator checks validate gesture logic and the relay protocol but cannot validate physical hand recognition or motor direction. Physical hardware must enforce its own stale-command stop; an app cannot deliver a stop over a disconnected network. The supplied Pi client forwards commands to the ESP32 and does not itself implement a motor watchdog.
 
 
 ## Code
 
-- `DashboardView.swift`: compact glass panels, photo crops, live/demo background, transcript and controls.
-- `RelayClient.swift`: relay configuration, JPEG receiver, and serialized/coalesced wheel-command writer.
-- `DemoSession.swift`: local selection, movement and update-before-dispense state machine.
-- `CenterpieceApp.swift`: full immersive scene, automatic launch, shared video settings, and exit/recovery window.
+- `CenterpieceApp.swift`: full immersive scene, the five anchored panels, the motion gate, and the exit/recovery window.
+- `GameMasterHUD.swift`: camera screen, the stage panel that switches between choosing and driving, connection settings, and the app lifecycle wiring.
+- `DestinaClient.swift`: polling, mutations and the guards that keep a four-second poll from fighting a mutation.
+- `DestinaModels.swift` / `DestinaConfig.swift`: decodable mirrors of the server's types, and bearer request building.
+- `DestinaTheme.swift`: Destina's palette, typefaces, panels and buttons.
+- `GameMasterStore.swift`: the stage machine, workbench input and the ported generation and approval rules.
+- `RosterPanel.swift`, `PromptWorkbenchView.swift`, `PromptCardView.swift`, `CurrentPromptView.swift`, `DriveControlsView.swift`, `ConversationPanel.swift`, `TokensPanel.swift`: the panels.
+- `RelayClient.swift`: relay configuration, JPEG receiver, serialized/coalesced wheel-command writer and the badge-screen message.
+- `DemoSession.swift`: movement, arming and drop state, mirroring the server's assigned prompt.
 - `RobotControls.swift`: observed hand-state HUD and native pinch-and-hold drop control.
 - `HandMotionController.swift`: permission and ARKit provider lifecycle in the immersive space.
 - `HandMotionInput.swift`: base/middle-bend fist recognition, tracking freshness and wheel mapping.
 - `Scripts/build_relay_config.py`: allowlisted `.env` → generated app configuration.
 
-See [relay protocol and tests](docs/relay-integration.md) and [demo artwork provenance/prompt](docs/demo-artwork.md).
+See [the Game Master port](docs/gamemaster-port.md), [relay protocol and tests](docs/relay-integration.md) and [demo artwork provenance/prompt](docs/demo-artwork.md).
 For the current headset hand-driving investigation and next test, see [hand-driving status](docs/hand-driving-status.md).
 
 ## Checks
@@ -97,7 +111,13 @@ xcrun swiftc -parse-as-library Centerpiece/DemoSession.swift Centerpiece/HandMot
 /tmp/centerpiece-hand-checks
 xcrun swiftc -parse-as-library Centerpiece/RelayClient.swift Tests/RelayClientChecks.swift -o /tmp/centerpiece-relay-checks
 python3 Tests/relay_fixture.py /tmp/centerpiece-relay-checks
+xcrun swiftc -parse-as-library Centerpiece/DestinaModels.swift Centerpiece/DestinaConfig.swift Tests/DestinaClientChecks.swift -o /tmp/centerpiece-destina-checks
+/tmp/centerpiece-destina-checks
 ```
+
+The Destina checks cover decoding a captured server feed, the snapshot version
+gate, the error envelope, the reward point cap, and that the Game Master key
+never reaches the URL.
 
 The WebSocket fixture checks the real Swift client over localhost, including auth header/room, JPEG decoding, malformed frames, stale video, reconnect, and cancellation. It is not a test of Render credentials, Pi streaming, or headset performance.
 
