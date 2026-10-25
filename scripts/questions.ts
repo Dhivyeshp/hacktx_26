@@ -81,43 +81,54 @@ const esc = (x: unknown) =>
         c
       ]!,
   );
+// Apply punctuation style to the saved preview without changing its source records.
+const prose = (value: string) =>
+  esc(
+    value
+      .replace(/[—–]/g, ", ")
+      .replace(/\s+-\s+/g, ", ")
+      .replace(/:\s*/g, ". "),
+  );
 const warnings = (r: Recommendation) => {
   const actor = s.players.find((p) => p.id === r.participants[0]);
   const items: string[] = [];
   if (
     r.type === "Bounty" &&
-    !r.secret?.toLowerCase().startsWith((actor?.name || "").toLowerCase() + ":")
+    !r.secret?.toLowerCase().startsWith((actor?.name || "").toLowerCase() + ",")
   )
     items.push(
-      "Needs edit: the private mission must address the first participant, who receives the secret. This saved candidate does not satisfy the new ownership check.",
+      "An edit is needed. The private mission must address the first participant, who receives the secret. This saved candidate does not satisfy the new ownership check.",
     );
   if (
     r.type === "Jinx" &&
     !/simultaneous|same time|count of three/i.test(r.instructions)
   )
     items.push(
-      "Needs edit: Jinx requires simultaneous one-word answers and attempts to find a match. Review the mechanic before use.",
+      "An edit is needed. Jinx requires simultaneous one-word answers and attempts to find a match. Review the mechanic before use.",
     );
   return items
-    .map((x) => `<p class="secret"><b>Review flag</b><br>${esc(x)}</p>`)
+    .map(
+      (x) => `<p class="secret"><b>A note before playing</b><br>${esc(x)}</p>`,
+    )
     .join("");
 };
-const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Kindred · Question studio</title><style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#100f16;color:#e7e1d5;font:16px/1.7 system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:40px 22px}h1,h2{font-family:Georgia,serif;font-weight:400;line-height:1.15}h1{font-size:clamp(36px,7vw,64px);margin:14px 0}h2{font-size:30px}small,.muted{color:#b9b0c4}.gold{color:#d2b776;text-transform:uppercase;letter-spacing:2px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:30px 0}.card,.panel{padding:25px;border:1px solid #75613d;border-radius:12px;background:radial-gradient(ellipse at top,#37224466,transparent),#19161f;overflow-wrap:anywhere}.panel{margin:20px 0}.badge{display:inline-block;padding:4px 10px;border:1px solid #827247;border-radius:20px;font-size:12px}.secret{padding:15px;background:#35243e;border-left:2px solid #bd9bd6;white-space:pre-wrap}.instructions{white-space:pre-wrap}summary{cursor:pointer;min-height:44px}code{overflow-wrap:anywhere;color:#d2b776}li{margin:10px 0}@media(max-width:900px){.grid{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
-</style><main><span class="gold">✦ Kindred / private question studio</span><h1>Questions with a spark.</h1><p>Room ${esc(s.code)} · ${esc(s.name)}. Review only: nothing here is assigned to a capsule or changes the game.</p><p class="muted">${reused ? "Saved Muse results — reopening and refreshing cost no credits." : args.includes("--live") ? "One explicit batch requested: three candidates, at most one repair request." : "Template preview — no credits used."} ${esc(result.notice || "")}</p>
+const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Destina questions</title><style>
+@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,500;1,400&family=Karla:wght@400;500;600&display=swap");
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#252823;color:#eeeadf;font:16px/1.75 "Karla",sans-serif}main{max-width:1180px;margin:auto;padding:48px 36px}h1,h2{font-family:"Bodoni Moda",Georgia,serif;font-weight:400;line-height:1.15;text-wrap:balance}h1{font-size:clamp(42px,6vw,70px);margin:24px 0}h2{font-size:34px;margin:0 0 18px}small,.muted{color:#b8bbae}.gold{color:#cdb68a;text-transform:uppercase;letter-spacing:1.6px;font-size:11px}.grid{margin:40px 0;background:#eeeadf;color:#2d3228;padding:0 34px}.card{padding:34px 0;border-bottom:1px solid #b2b7a3;display:grid;grid-template-columns:140px minmax(0,1fr);gap:32px;overflow-wrap:anywhere}.card:last-child{border:0}.card .muted{color:#626b58;font-size:14px}.card p{margin:16px 0}.card .gold{color:#697356;font-size:10px}.question-number{font:52px "Bodoni Moda",Georgia,serif;color:#818b70;display:block;margin-bottom:18px}.question-meta{font-size:12px;line-height:1.9;color:#697356}.question-meta span{display:block}.instructions{font-size:18px;line-height:1.8;white-space:pre-wrap}.secret{border-left:2px solid #a77343;padding:12px 18px;background:none;white-space:pre-wrap;font-size:14px}.panel{margin:28px 0;padding:24px 0;border-top:1px solid #59604f}.panel h2{font-size:30px}.panel p{max-width:760px}details{font-size:14px}summary{cursor:pointer;min-height:48px;padding:12px 0;border-top:1px solid #a2aa93}summary:focus-visible{outline:2px solid #a77343;outline-offset:3px}code{overflow-wrap:anywhere;color:#d3bd91;font-size:12px}.card small{color:#657153}.wordmark{font:28px "Bodoni Moda",Georgia,serif;letter-spacing:4px;border-bottom:1px solid #59604f;padding-bottom:22px;display:flex;align-items:center;justify-content:space-between}.wordmark small{font:10px "Karla",sans-serif;letter-spacing:1px}.panel .gold{margin-top:20px}@media(max-width:700px){main{padding:30px 22px}.grid{padding:0 22px;margin:30px 0}.card{grid-template-columns:1fr;gap:18px;padding:26px 0}.question-aside{display:flex;gap:22px;align-items:center}.question-number{font-size:38px;margin:0}.question-meta{display:flex;gap:14px;font-size:11px}.instructions{font-size:16px}h2{font-size:29px}.wordmark{font-size:24px}.wordmark small{font-size:8px}.panel{margin:24px 0}}
+</style><main><div class="wordmark">DESTINA<small>AT THE TABLE WITH TINA</small></div><h1>Questions for the table.</h1><p>Room ${esc(s.code)}, ${esc(s.name)}. These questions are here for review. None have been assigned to a relic.</p><p class="muted">${reused ? "These Muse questions are saved. Refreshing costs no credits." : args.includes("--live") ? "One batch of three questions was requested. It allows at most one repair." : "These are template questions. No credits were used."} ${esc(result.notice || "")}</p>
 <details class="panel"><summary>Approved interests used (${s.players.length} players)</summary>${s.players
   .map(
     (p) =>
-      `<p><b>${esc(p.name)}</b>${p.sample ? " · preview fixture, not an Instagram import" : ""}<br>${esc(
+      `<p><b>${esc(p.name)}</b>${p.sample ? ", preview fixture, not an Instagram import" : ""}<br>${esc(
         p.interests
           .filter((i) => i.approved)
           .map((i) => i.label)
-          .join(" · "),
+          .join(", "),
       )}</p>`,
   )
   .join("")}</details>
-<div class="grid">${result.recommendations.map((r) => `<article class="card"><span class="badge">${r.mode === "live" ? "Muse AI" : "Template fallback"}</span><p class="gold">${esc(r.type)} · ${r.duration} seconds</p><h2>${esc(r.title)}</h2>${warnings(r)}<p class="muted">${esc(r.participants.map((id) => s.players.find((p) => p.id === id)?.name || id).join(" + "))}</p><p class="instructions">${esc(r.instructions)}</p>${r.secret ? `<div class="secret"><b>Private Bounty instructions</b><br>${esc(r.secret)}</div>` : ""}<details><summary>Why this question?</summary><p>${esc(r.reason)}</p><small>Approved evidence: ${esc(s.players.flatMap((p) => p.interests.filter((i) => r.sourceInterestIds.includes(i.id)).map((i) => `${p.name}: ${i.label}`)).join("; "))}</small></details></article>`).join("")}</div>
-<section class="panel"><h2>Judge the conversation.</h2><ol><li>Would you want to answer it? It should invite a story or interesting choice.</li><li>Does it use the approved interests accurately, without inventing personal facts?</li><li>Is the connection between players specific and natural?</li><li>Can everyone understand the task and finish within the timer?</li><li>Are these three options meaningfully different?</li></ol><p>Mark each 0–2. Aim for at least 8/10, with no invented personal claims. An interest reference proves grounding, not question quality; your review makes that judgment.</p><p>Saved previews: <code>npm run questions -- ${esc(s.code)}${args.includes("--sample") ? " --sample" : ""} --serve</code></p><p>Explicit new Muse batch: add <code>--live</code>. Refreshing this page never calls Muse. Local limit defaults to 100 outbound model requests across profile extraction and question generation, including repairs. This is a request cap, not a dollar balance.</p></section></main></html>`;
+<div class="grid">${result.recommendations.map((r, index) => `<article class="card"><aside class="question-aside"><span class="question-number">${String(index + 1).padStart(2, "0")}</span><div class="question-meta"><span>${esc(r.type)}</span><span>${r.duration} seconds</span><span>${r.mode === "live" ? "From Muse" : "From the library"}</span></div></aside><div class="question-body"><h2>${prose(r.title)}</h2><p class="muted">${esc(r.participants.map((id) => s.players.find((p) => p.id === id)?.name || id).join(" and "))}</p><p class="instructions">${prose(r.instructions)}</p>${r.secret ? `<div class="secret"><b>The private mission</b><p>${prose(r.secret)}</p></div>` : ""}${warnings(r)}<details><summary>Why this question?</summary><p>${prose(r.reason)}</p><small>Based on ${esc(s.players.flatMap((p) => p.interests.filter((i) => r.sourceInterestIds.includes(i.id)).map((i) => `${p.name} chose ${i.label}`)).join("; "))}</small></details></div></article>`).join("")}</div>
+<section class="panel"><h2>How do these feel?</h2><p>Would you want to answer these? A good question gives you something specific to talk about without assuming things about your life.</p><p>The rules should be clear, the task should fit the timer, and each option should feel different. A reference to an interest alone doesn’t make a question good.</p><p>Anything that invents a personal fact or confuses the game rules needs an edit before play.</p><p>The saved preview is available with <code>npm run questions -- ${esc(s.code)}${args.includes("--sample") ? " --sample" : ""} --serve</code></p><p>For a new Muse batch, add <code>--live</code>. Refreshing this page never calls Muse. Local limit defaults to 100 outbound model requests across profile extraction and question generation, including repairs. This is a request cap, not a dollar balance.</p></section></main></html>`;
 const output = resolve(`data/question-previews/${s.code}.html`);
 writeFileSync(output, html, { mode: 0o600 });
 console.log(
@@ -135,7 +146,7 @@ if (args.includes("--serve")) {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+      "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
     );
     res.end(readFileSync(output));
   }).listen(3001, "127.0.0.1", () =>

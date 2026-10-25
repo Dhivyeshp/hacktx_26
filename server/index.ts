@@ -28,5 +28,5 @@ if (process.env.NODE_ENV === "production") {
 }
 const port = Number(process.env.PORT) || 3000;
 server.listen(port, "0.0.0.0", () =>
-  console.log(`Centerpiece is ready: http://localhost:${port}`),
+  console.log(`Destina is ready: http://localhost:${port}`),
 );

@@ -12,7 +12,6 @@ import {
   LockKeyhole,
   RefreshCw,
   Shield,
-  Sparkles,
   Upload,
   Users,
   X,
@@ -23,14 +22,6 @@ import type {
   InterestSuggestion,
 } from "../shared/types";
 import "./style.css";
-const glyphs = {
-  Duel: "⚔",
-  Bounty: "⌖",
-  "Hot Seat": "♜",
-  Jinx: "✧",
-  Forge: "⚒",
-  Golden: "♛",
-};
 async function api(path: string, body?: unknown, method?: string) {
   const response = await fetch("/api" + path, {
     method: method || (body ? "POST" : "GET"),
@@ -165,19 +156,15 @@ function App() {
   if (!loaded)
     return (
       <div className="loading-screen">
-        <Sparkles size={24} />
-        <p>Finding your place in the circle…</p>
+        <p>Finding your table…</p>
       </div>
     );
   return (
     <div className="app-shell">
       <header className="header">
         <a className="brand" href="/">
-          <span className="brand-mark" aria-hidden="true">
-            ✥
-          </span>
           <span>
-            CENTERPIECE<small>A LITTLE CURIOSITY. A REAL CONNECTION.</small>
+            DESTINA<small>A GAME WITH THE PEOPLE HERE.</small>
           </span>
         </a>
         {s && (
@@ -207,39 +194,34 @@ function App() {
         {!joined ? (
           <section className="join-layout">
             <div className="welcome-copy">
-              <span className="eyebrow">
-                <span className="gold">✦</span> THE BEST STORIES START WITH
-                PEOPLE
-              </span>
+              <span className="eyebrow">DESTINA WITH TINA</span>
               <h1>
-                A little of you.
-                <br />A world of
+                Good company.
                 <br />
-                <em>possibility.</em>
+                <em>A little curiosity.</em>
               </h1>
               <p>
-                Bring your interests to the table. We’ll find the sparks that
-                turn a gathering into a connection.
+                A few things you’re into can lead to a conversation you didn’t
+                expect. Tina will bring the relics.
               </p>
               <div className="welcome-foot">
                 <span>
                   <Shield size={15} /> You choose what to share
                 </span>
                 <span>
-                  <Users size={15} /> Made for your circle
+                  <Users size={15} /> Your people, around one table
                 </span>
               </div>
-              <Sigil />
             </div>
             <section className="panel join-panel">
               <span className="eyebrow">
-                {fromChip ? "YOUR CAPSULE IS WAITING" : "YOUR SEAT AWAITS"}
+                {fromChip ? "YOUR RELIC IS WAITING" : "YOUR TABLE"}
               </span>
-              <h2>{room ? room.name : "Enter the circle."}</h2>
+              <h2>{room ? room.name : "A place at the table."}</h2>
               <p>
                 {fromChip
                   ? "Join your room first so we can show you the right prompt."
-                  : "The bot brought you here. Let’s get you settled in."}
+                  : "You found Tina. Now we just need your name."}
               </p>
               {room && (
                 <div className="room-label">
@@ -275,7 +257,7 @@ function App() {
                       value={code}
                       maxLength={6}
                       onChange={(e) => setCode(e.target.value.toUpperCase())}
-                      placeholder="Find your room on the bot"
+                      placeholder="Room code on Tina"
                       autoCapitalize="characters"
                     />
                   </label>
@@ -290,7 +272,7 @@ function App() {
                     <>
                       {room?.status === "finished"
                         ? "This gathering has ended"
-                        : "Take your seat"}
+                        : "Join the table"}
                       <ArrowRight size={17} />
                     </>
                   )}
@@ -300,14 +282,13 @@ function App() {
                 <Shield size={16} />
                 <p>
                   {fromChip
-                    ? "All capsule chips open the same page. Joining connects this phone to your room."
+                    ? "Every relic opens the same page. Joining connects this phone to your room."
                     : "Your profile helps us suggest interests. Nothing enters the game until you approve it."}
                 </p>
               </div>
               {!requestedRoom && (
                 <p className="scan-note">
-                  Scan the QR on the physical bot to arrive in the right room
-                  automatically.
+                  Tina’s QR code takes you straight to your room.
                 </p>
               )}
             </section>
@@ -315,11 +296,11 @@ function App() {
         ) : ended ? (
           <section className="center-state">
             <span className="eyebrow">UNTIL THE NEXT GATHERING</span>
-            <Sigil />
-            <h1>The circle rests.</h1>
+
+            <h1>That’s all for tonight.</h1>
             <p>
-              This session has ended. Scan the bot’s next room QR to join a new
-              gathering.
+              This game has ended. Tina will have a new QR code when the next
+              one starts.
             </p>
             <button className="secondary" onClick={() => setView("profile")}>
               Review your profile <ArrowRight size={16} />
@@ -341,19 +322,16 @@ function App() {
                 className={view === "profile" ? "selected" : ""}
                 onClick={() => setView("profile")}
               >
-                <Users size={15} />
                 Your profile
               </button>
               <button
                 className={view === "ready" ? "selected" : ""}
                 onClick={() => setView("ready")}
               >
-                <CheckCircle2 size={15} />
                 Your place
               </button>
               <a className={view === "capsule" ? "selected" : ""} href="/c">
-                <Sparkles size={15} />
-                Your capsule
+                Your relic
               </a>
               <span className="player-name">
                 {s.me.name}
@@ -370,10 +348,9 @@ function App() {
             ) : view === "ready" ? (
               <section className="ready-layout">
                 <div className="ready-main">
-                  <span className="eyebrow">YOUR PLACE IN THE CIRCLE</span>
+                  <span className="eyebrow">YOUR PLACE AT THE TABLE</span>
                   <div className="ready-seal">
                     <span>{s.me.name[0].toUpperCase()}</span>
-                    <i>✦</i>
                   </div>
                   <h1>
                     {s.me.interests.some((i) => i.approved) ? (
@@ -384,22 +361,22 @@ function App() {
                       </>
                     ) : (
                       <>
-                        A spark is
+                        A little more
                         <br />
-                        <em>all it takes.</em>
+                        <em>about you.</em>
                       </>
                     )}
                   </h1>
                   <p>
                     {s.me.interests.some((i) => i.approved)
-                      ? "Your interests are part of the story now. Put your phone down, settle in, and let the table surprise you."
+                      ? "Your profile is ready. You can put your phone away until Tina brings a relic."
                       : "Add a few interests so the questions feel a little more like you."}
                   </p>
                   <div className="interest-cloud">
                     {s.me.interests
                       .filter((i) => i.approved)
                       .map((i) => (
-                        <span key={i.id}>✦ {i.label}</span>
+                        <span key={i.id}>{i.label}</span>
                       ))}
                   </div>
                   <button
@@ -415,44 +392,22 @@ function App() {
                 <aside className="panel next-panel">
                   <span className="eyebrow">WHAT HAPPENS NEXT</span>
                   <h2>
-                    A little mystery,
+                    Something to
                     <br />
-                    delivered.
+                    talk about.
                   </h2>
-                  <ol className="next-steps">
-                    <li>
-                      <span>01</span>
-                      <div>
-                        <strong>Make yourself at home</strong>
-                        <p>
-                          Your approved interests help shape meaningful
-                          questions for the circle.
-                        </p>
-                      </div>
-                    </li>
-                    <li>
-                      <span>02</span>
-                      <div>
-                        <strong>The Game Master chooses</strong>
-                        <p>
-                          They’ll select the question and the people who bring
-                          it to life.
-                        </p>
-                      </div>
-                    </li>
-                    <li>
-                      <span>03</span>
-                      <div>
-                        <strong>Tap your capsule</strong>
-                        <p>
-                          Hold your phone beside the chip inside. Your prompt
-                          opens right here.
-                        </p>
-                      </div>
-                    </li>
-                  </ol>
+                  <div className="next-copy">
+                    <p>
+                      The Game Master is choosing a question for your table,
+                      using the interests everyone has shared.
+                    </p>
+                    <p>
+                      When Tina brings a relic, hold your phone near the chip
+                      inside. Your question will open here.
+                    </p>
+                  </div>
                   <a className="secondary full" href="/c">
-                    Open capsule page <ArrowUpRight size={16} />
+                    Your relic <ArrowUpRight size={16} />
                   </a>
                   <div className="quiet-note">
                     <LockKeyhole size={15} />
@@ -470,25 +425,9 @@ function App() {
         )}
       </main>
       <footer>
-        <span>
-          <span className="footer-mark">✥</span> LESS SCROLLING. MORE STORIES.
-        </span>
-        <span>
-          MADE FOR THE PEOPLE AT YOUR TABLE <span className="gold">✦</span>
-        </span>
+        <span>DESTINA WITH TINA</span>
+        <span>GOOD COMPANY GOES A LONG WAY</span>
       </footer>
-    </div>
-  );
-}
-function Sigil() {
-  return (
-    <div className="sigil" aria-hidden="true">
-      <div className="sigil-square" />
-      <span className="sigil-rune top">ᛟ</span>
-      <span className="sigil-rune bottom">ᛉ</span>
-      <span className="sigil-rune left">ᚷ</span>
-      <span className="sigil-rune right">ᛞ</span>
-      <span className="sigil-center">✥</span>
     </div>
   );
 }
@@ -544,40 +483,36 @@ function Profile({
     <section className={`profile-page ${readOnly ? "read-only" : ""}`}>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">THE PERSON BEHIND THE PLAYER</span>
+          <span className="eyebrow">YOUR PROFILE</span>
           <h1>
-            Your world.
+            A little
             <br className="mobile-break" />
-            <em> Your kind of magic.</em>
+            <em> about you.</em>
           </h1>
           <p>
-            A few interests are all we need to find something worth talking
-            about.
+            What do you spend your time on? What could you talk about for hours?
+            That’s a good place to start.
           </p>
         </div>
-        <span className="heading-seal" aria-hidden="true">
-          ᛟ
-        </span>
       </div>
       <div className="steps">
         <span className="done">
-          <Check size={13} /> JOIN THE ROOM
+          <Check size={13} /> YOUR ROOM
         </span>
         <i />
-        <span className="current">02 SHARE YOUR SPARKS</span>
+        <span className="current">02 YOUR INTERESTS</span>
         <i />
-        <span>03 TAP A CAPSULE</span>
+        <span>03 YOUR RELIC</span>
       </div>
       {s.notice && (
         <div className="notice" role="status">
-          <Sparkles size={15} />
           <p>{s.notice}</p>
         </div>
       )}
       <div className="profile-grid">
         <section className="panel source-panel">
-          <span className="eyebrow">01 / START WITH YOUR PROFILE</span>
-          <h2>A glimpse of your world.</h2>
+          <span className="eyebrow">01 / YOUR PROFILE</span>
+          <h2>The things you’re into.</h2>
           <p>
             Connect Instagram to find interests in your profile and recent
             captions. You’ll choose what feels right.
@@ -603,9 +538,9 @@ function Profile({
           {s.sources.some((source) => source.kind !== "manual") && (
             <div className="notice" style={{ flexDirection: "column" }}>
               <p>
-                Saved profile:{" "}
+                Your saved profile has{" "}
                 {s.sources.filter((source) => source.kind === "bio").length}{" "}
-                bio/text excerpt(s),{" "}
+                profile excerpt(s) and{" "}
                 {s.sources.filter((source) => source.kind === "caption").length}{" "}
                 captions. Questions use only interests you approve.
               </p>
@@ -617,9 +552,7 @@ function Profile({
                 >
                   {busy === "analyze" ? (
                     <LoaderCircle className="spin" size={16} />
-                  ) : (
-                    <Sparkles size={16} />
-                  )}
+                  ) : null}
                   {busy === "analyze"
                     ? "Finding interests…"
                     : "Find interests in saved profile"}
@@ -627,19 +560,19 @@ function Profile({
               )}
               {!readOnly && (
                 <p>
-                  Runs one Muse analysis, with at most one repair. Uses saved
-                  text; no Instagram reconnect needed.
+                  This uses your saved profile. You won’t need to connect
+                  Instagram again.
                 </p>
               )}
             </div>
           )}
           <p className="fine-print">
-            Instagram supports Business and Creator accounts. Your feed, saved
-            posts, and messages stay private.
+            Instagram supports Business and Creator accounts. We read your bio
+            and recent captions, never your messages or saved posts.
           </p>
           <div className="or-divider">
             <span />
-            OR SHARE A LITTLE YOURSELF
+            OR A FEW WORDS FROM YOU
             <span />
           </div>
           <label>
@@ -703,9 +636,7 @@ function Profile({
               >
                 {busy === "extract" ? (
                   <LoaderCircle className="spin" size={16} />
-                ) : (
-                  <Sparkles size={16} />
-                )}
+                ) : null}
                 Find my interests
               </button>
             </>
@@ -720,11 +651,11 @@ function Profile({
           </div>
         </section>
         <section className="panel interest-panel">
-          <span className="eyebrow">02 / KEEP WHAT FEELS LIKE YOU</span>
-          <h2>What lights you up?</h2>
+          <span className="eyebrow">02 / YOUR INTERESTS</span>
+          <h2>What feels like you?</h2>
           <p>
-            Remove anything we missed the mark on. Add the interests your
-            profile doesn’t show.
+            Some of these might fit. Others might not. You can remove any of
+            them or add something your profile doesn’t show.
           </p>
           {s.me.interests.length ? (
             <div className="interest-choices">
@@ -745,7 +676,9 @@ function Profile({
                     )
                   }
                 >
-                  <span>{selected.includes(i.id) ? "✦" : "+"}</span>
+                  <span aria-hidden="true">
+                    {selected.includes(i.id) ? "✓" : "+"}
+                  </span>
                   {i.label}
                   {selected.includes(i.id) && <Check size={13} />}
                 </button>
@@ -753,8 +686,7 @@ function Profile({
             </div>
           ) : (
             <div className="interest-empty">
-              <span aria-hidden="true">✧</span>
-              <h3>Every story starts somewhere.</h3>
+              <h3>Nothing here yet.</h3>
               <p>
                 Connect your profile, share a little text,
                 <br />
@@ -776,7 +708,7 @@ function Profile({
             </label>
             <div className="approval-note">
               <CheckCircle2 size={15} />
-              <span>Your choices, your story.</span>
+              <span>Only your selections go into the game.</span>
               <span>{total}/12 selected</span>
             </div>
             {!readOnly && (
@@ -790,7 +722,7 @@ function Profile({
                     <LoaderCircle className="spin" size={16} />
                   ) : (
                     <>
-                      Save & join the circle
+                      Save my interests
                       <ArrowRight size={17} />
                     </>
                   )}
@@ -799,14 +731,14 @@ function Profile({
             )}
           </form>
           <p className="fine-print under-save">
-            You can update these anytime. Suggested topics are possibilities,
-            never facts about you.
+            You can change these whenever you like. Nothing is used until you
+            choose it.
           </p>
           {s.sources.length > 0 && (
             <details>
               <summary>
                 <FileText size={14} />
-                See what informed these suggestions
+                The profile text we used
                 <span>{s.sources.length}</span>
               </summary>
               {s.sources.map((source) => (
@@ -824,9 +756,9 @@ function Profile({
           <div className="privacy-bottom">
             <LockKeyhole size={16} />
             <p>
-              Here for connection.
+              Your profile stays in this room.
               <br />
-              Always on your terms.
+              You can remove it whenever you like.
             </p>
           </div>
           {deleting ? (
@@ -905,16 +837,16 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
   return (
     <section className="capsule-page">
       <div className="capsule-heading">
-        <span className="eyebrow">A LITTLE MYSTERY, UNSEALED</span>
+        <span className="eyebrow">YOUR RELIC</span>
         <span className="live-label">
           <span className="dot" />
-          YOUR ROOM’S CURRENT CAPSULE
+          YOUR ROOM’S CURRENT RELIC
         </span>
       </div>
       {error ? (
         <div className="center-state">
           <LockKeyhole size={30} />
-          <h1>Lost the thread.</h1>
+          <h1>The question didn’t load.</h1>
           <p>{error}</p>
           <button className="secondary" onClick={refresh}>
             Try again <RefreshCw size={15} />
@@ -929,21 +861,18 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
         <article className="prompt-card" key={p.id}>
           <div className="prompt-top">
             <span className="eyebrow">
-              CAPSULE {String(p.number).padStart(2, "0")} /{" "}
-              {p.type.toUpperCase()}
+              RELIC {String(p.number).padStart(2, "0")} / {p.type.toUpperCase()}
             </span>
             <span className="duration">
               <Clock size={14} />
               {p.duration} seconds
             </span>
           </div>
-          <div className="relic-glyph" aria-hidden="true">
-            {glyphs[p.type]}
-          </div>
+
           <span className="target-label">
             {p.isTarget
               ? "THIS ONE IS FOR YOU"
-              : `A SPARK FOR ${p.participants[0]?.name.toUpperCase()}`}
+              : `FOR ${p.participants[0]?.name.toUpperCase()}`}
           </span>
           <h1>{p.title}</h1>
           <p className="prompt-instructions">{p.instructions}</p>
@@ -968,22 +897,20 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
             </div>
           ) : null}
           <div className="prompt-bottom">
-            <span className="small-star">✦</span>A question is only the
-            beginning. Make the moment yours.
+            You can pass on any question. There’s no need to explain.
           </div>
         </article>
       ) : (
         <div className="waiting-prompt">
-          <Sigil />
-          <span className="eyebrow">GOOD THINGS TAKE A LITTLE MYSTERY</span>
+          <span className="eyebrow">BETWEEN QUESTIONS</span>
           <h1>
-            The next spark
+            A moment
             <br />
-            <em>is on its way.</em>
+            <em>between relics.</em>
           </h1>
           <p>
             Your Game Master hasn’t assigned a question yet. This page will
-            update when the next capsule is ready.
+            update when the next relic is ready.
           </p>
           {!s.me.interests.some((i) => i.approved) && (
             <button className="secondary" onClick={onProfile}>
@@ -1003,8 +930,8 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
         </button>
       </div>
       <p className="capsule-note">
-        Every capsule chip opens this page. The question follows your room, not
-        the individual chip.
+        Every relic opens this page. The question follows your room, not the
+        individual chip.
       </p>
     </section>
   );
