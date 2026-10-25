@@ -1,6 +1,6 @@
 # Using Vision Pro movement controls
 
-Use loose fists to drive the robot through the relay. The Vision Pro recognizes
+Make a firm fist with either hand to drive the robot through the relay. The Vision Pro recognizes
 your hands and sends wheel speeds; the Pi receives those commands and forwards
 them over serial when an ESP32 port is configured.
 
@@ -74,7 +74,7 @@ camera feed needed by the app.
 3. Select **Enable hand driving** and allow hand-tracking permission.
 4. Close any settings panel and keep both hands visible to the headset.
 5. Open both hands until the panel says it is ready.
-6. Make a loose fist with either or both hands and hold the pose steady.
+6. Make a firm fist with either or both hands and hold the pose steady for about a third of a second.
 
 No gaze target or on-screen drag is needed while driving. Keep the other hand
 visible and open when making a turn.
@@ -92,8 +92,9 @@ Wheel values are normalized commands, not meters per second. Direction labels
 assume positive wheel speeds move the wheels forward. Reverse is not mapped to
 a hand gesture.
 
-A new direction settles for about 160 ms before movement starts. Opening both
-hands stops movement immediately in the app. Actual delivery still depends on
+A new direction settles for about 300 ms before movement starts. Opening both
+hands stops movement immediately in the app. Recognition is deliberately
+strict: a loose or half-cupped hand does not count. Actual delivery still depends on
 the network and motor controller.
 
 Use the separate **Stop** button to disable hand driving. To recover from a

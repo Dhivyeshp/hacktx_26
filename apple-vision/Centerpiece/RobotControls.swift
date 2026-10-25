@@ -27,7 +27,7 @@ struct HandMotionControls: View {
                 .foregroundStyle(session.handDrivingEnabled ? controlMint : .secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: .infinity)
             VStack(alignment: .leading, spacing: 7) {
-                Text("Make a loose fist. Open both hands to stop.").fontWeight(.semibold)
+                Text("Make a firm fist and hold it. Open both hands to stop.").fontWeight(.semibold)
                 Text("Both fists → straight\nLeft fist only → left\nRight fist only → right\nBoth hands open → stop")
                     .foregroundStyle(.secondary).lineSpacing(4)
             }.font(.system(size: 11)).frame(maxWidth: .infinity, alignment: .leading)
