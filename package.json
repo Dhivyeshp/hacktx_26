@@ -11,7 +11,13 @@
     "format": "prettier --write src server shared scripts tests vite.config.ts",
     "room": "tsx scripts/room.ts",
     "tunnel": "tsx scripts/tunnel.ts",
-    "questions": "tsx scripts/questions.ts"
+    "questions": "tsx scripts/questions.ts",
+    "chain:build": "cd solana && anchor build && npm run -w @centerpiece/chain sync-idl",
+    "chain:test": "solana/scripts/test-local.sh",
+    "chain:init": "npm run -w @centerpiece/chain init",
+    "chain:smoke": "npm run -w @centerpiece/chain smoke",
+    "chain:serve": "npm run -w @centerpiece/chain serve",
+    "chain:seed-shop": "npm run -w @centerpiece/chain seed-shop"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -32,8 +38,11 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "prettier": "^3.9.10",
-    "tsx": "^4.19.3",
-    "typescript": "^5.7.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
     "vite": "^6.1.0"
-  }
+  },
+  "workspaces": [
+    "solana/client"
+  ]
 }
