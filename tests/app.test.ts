@@ -891,10 +891,10 @@ test("private question batches survive selection and restart without exposing im
   });
   assert.equal(login.body.batches[0].recommendations.length, 3);
   assert.equal(login.body.batches[0].origin, "profiles");
-  assert.deepEqual(login.body.conversation, {
-    status: "not_connected",
-    segments: [],
-  });
+  assert.equal(login.body.conversation.status, "not_connected");
+  assert.deepEqual(login.body.conversation.segments, []);
+  assert.equal(login.body.conversation.requestCount, 0);
+  assert.equal(login.body.canControl, true);
   const before = getSession(db, room.id)!.version;
   await request("/questions/session", undefined, login.cookie);
   assert.equal(getSession(db, room.id)!.version, before);
@@ -927,7 +927,11 @@ test("private question batches survive selection and restart without exposing im
   );
   const reopened = openDb(file);
   assert.deepEqual(
-    questionsSnapshot(getSession(reopened, room.id)!),
+    JSON.parse(
+      JSON.stringify(
+        questionsSnapshot(getSession(reopened, room.id)!, false, true),
+      ),
+    ),
     feed.body,
   );
   reopened.close();
@@ -1168,4 +1172,523 @@ test("intro service failure saves text for review without inventing interests", 
   assert.deepEqual(r.body.me.interests, []);
   assert.equal(r.body.sources[0].kind, "intro");
   assert.match(r.body.notice, /unavailable/);
+});
+
+test("GM control cookies are explicit, room scoped, and cannot be obtained from player or read-only access", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Control-cookie test" },
+    "",
+    true,
+  );
+  const code = created.body.room.code;
+  const player = await request("/join", { name: "Listener", code });
+  const readGrant = questionsAccess(db, getSession(db, code)!);
+  const readToken = new URLSearchParams(
+    new URL(readGrant.url).hash.slice(1),
+  ).get("access")!;
+  const read = await request("/questions/access", { token: readToken });
+  assert.equal(read.body.canControl, false);
+  for (const op of [
+    "recommendations",
+    "assign",
+    "clear",
+    "conversation",
+    "transcript",
+    "speaker",
+    "audio-ticket",
+  ]) {
+    assert.equal(
+      (await request(`/questions/${op}`, {}, read.cookie)).status,
+      403,
+    );
+    assert.equal(
+      (await request(`/questions/${op}`, {}, player.cookie)).status,
+      401,
+    );
+  }
+  const grant = questionsAccess(db, getSession(db, code)!, "control");
+  const token = new URLSearchParams(new URL(grant.url).hash.slice(1)).get(
+    "access",
+  )!;
+  const gm = await request("/questions/access", { token });
+  assert.equal(gm.body.canControl, true);
+  assert.equal(
+    (await request("/questions/conversation", { automatic: true }, gm.cookie))
+      .status,
+    200,
+  );
+  assert.equal(getSession(db, code)!.conversation!.automatic, true);
+  assert.equal(
+    (await request("/control/rooms/" + code, undefined, gm.cookie)).status,
+    403,
+  );
+  assert.equal(
+    (await request("/questions/session?room=ZZZZZZ", undefined, gm.cookie))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await request("/questions/audio-ticket", { consent: false }, gm.cookie))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await request("/questions/audio-ticket", { consent: true }, gm.cookie))
+      .status,
+    503,
+  );
+});
+
+test("GM can choose, edit and complete a prompt while private transcripts stay isolated", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Browser mechanics" },
+    "",
+    true,
+  );
+  const code = created.body.room.code;
+  let playerCookie = "";
+  for (const name of ["Alex", "Morgan", "Quinn"]) {
+    const p = await request("/join", { name, code });
+    playerCookie = p.cookie;
+    await request(
+      "/interests",
+      { labels: ["Hiking"], approvedIds: [] },
+      p.cookie,
+    );
+  }
+  const gm = await request("/questions/login", {
+    code,
+    key: "test-control-credential",
+  });
+  const generated = await request(
+    "/questions/recommendations",
+    { origin: "library" },
+    gm.cookie,
+  );
+  assert.equal(generated.status, 200);
+  const recommendation = generated.body.recommendations[0];
+  const text =
+    "We were sharing a story about a very unusual walking trail and how we each choose our next adventure. Some people prefer a quiet woodland route while others enjoy a steep climb with a surprising view at the end of the day.";
+  assert.equal(
+    (
+      await request(
+        "/questions/transcript",
+        { id: "test-utterance", text, speakerLabel: "Speaker A" },
+        gm.cookie,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        "/questions/transcript",
+        { id: "test-utterance", text, speakerLabel: "Speaker A" },
+        gm.cookie,
+      )
+    ).body.duplicate,
+    true,
+  );
+  let feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.equal(feed.conversation.segments.length, 1);
+  assert.equal(feed.conversation.segments[0].origin, "test");
+  assert.equal(
+    (
+      await request(
+        "/questions/speaker",
+        { speakerLabel: "Speaker A", playerId: "outsider" },
+        gm.cookie,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        "/questions/speaker",
+        { speakerLabel: "Speaker A", playerId: feed.players[0].id },
+        gm.cookie,
+      )
+    ).status,
+    200,
+  );
+  feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.equal(feed.conversation.segments[0].speakerId, feed.players[0].id);
+  assert.ok(
+    !JSON.stringify(
+      (await request("/session", undefined, playerCookie)).body,
+    ).includes("very unusual walking trail"),
+  );
+  const chosen = await request(
+    "/questions/assign",
+    {
+      recommendationId: recommendation.id,
+      instructions:
+        "Take turns sharing one surprising detail from your favorite walk.",
+    },
+    gm.cookie,
+  );
+  assert.equal(chosen.status, 200);
+  assert.equal(
+    (
+      await request(
+        "/questions/assign",
+        { recommendationId: recommendation.id },
+        gm.cookie,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await request("/prompt", undefined, playerCookie)).body.prompt
+      .instructions,
+    "Take turns sharing one surprising detail from your favorite walk.",
+  );
+  assert.equal(
+    (await request("/questions/clear", { status: "completed" }, gm.cookie))
+      .status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        "/questions/recommendations",
+        { origin: "conversation", replace: true },
+        gm.cookie,
+      )
+    ).status,
+    200,
+  );
+  feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.equal(feed.batches.at(-1).origin, "conversation");
+  assert.equal(
+    (
+      await request(
+        "/questions/recommendations",
+        { origin: "conversation", replace: true },
+        gm.cookie,
+      )
+    ).status,
+    409,
+  );
+  await request("/questions/conversation", { action: "clear" }, gm.cookie);
+  assert.deepEqual(
+    (await request("/questions/session", undefined, gm.cookie)).body
+      .conversation.segments,
+    [],
+  );
+});
+
+test("conversation generation requires new speech and counts repairs against the persistent game allowance", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Budget test" },
+    "",
+    true,
+  );
+  const code = created.body.room.code;
+  for (const name of ["Moss", "Fern", "Reed"]) {
+    const p = await request("/join", { name, code });
+    await request(
+      "/interests",
+      { labels: ["Pottery"], approvedIds: [] },
+      p.cookie,
+    );
+  }
+  const gm = await request("/questions/login", {
+    code,
+    key: "test-control-credential",
+  });
+  assert.equal(
+    (
+      await request(
+        "/questions/recommendations",
+        { origin: "conversation" },
+        gm.cookie,
+      )
+    ).status,
+    409,
+  );
+  await request(
+    "/questions/transcript",
+    {
+      id: "context-1",
+      text: "We are talking about making pottery together and how every bowl seems to end up with its own personality. One person wants to make a tea set, another a tiny sculpture, and another a large planter for a very small apartment.",
+    },
+    gm.cookie,
+  );
+  const original = globalThis.fetch;
+  process.env.MODEL_API_KEY = "fake";
+  process.env.GAME_MODEL_MAX_REQUESTS = "1";
+  let calls = 0;
+  try {
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith(base)) return original(input, init);
+      calls++;
+      const body = JSON.parse(String(init?.body));
+      assert.match(
+        body.messages[0].content,
+        /Anonymous speakers are not player identities/,
+      );
+      assert.match(body.messages[1].content, /context-1/);
+      return Response.json({ choices: [{ message: { content: "{}" } }] });
+    };
+    const r = await request(
+      "/questions/recommendations",
+      { origin: "conversation" },
+      gm.cookie,
+    );
+    assert.equal(r.status, 200);
+    assert.equal(calls, 1);
+    assert.equal(r.body.recommendations[0].mode, "fallback");
+    const feed = (await request("/questions/session", undefined, gm.cookie))
+      .body;
+    assert.equal(feed.conversation.requestCount, 1);
+    assert.equal(feed.conversation.requestLimit, 1);
+    const reopened = openDb(file);
+    assert.equal(
+      (
+        reopened
+          .prepare(
+            "SELECT count(*) AS n FROM game_model_attempts WHERE session_id=?",
+          )
+          .get(created.body.room.id) as any
+      ).n,
+      1,
+    );
+    reopened.close();
+  } finally {
+    globalThis.fetch = original;
+    delete process.env.MODEL_API_KEY;
+    delete process.env.GAME_MODEL_MAX_REQUESTS;
+  }
+});
+
+test("a successful conversation request returns grounded prompts and a summary in one model call", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Combined context test" },
+    "",
+    true,
+  );
+  for (const name of ["Ari", "Kit", "Sam"]) {
+    const p = await request("/join", { name, code: created.body.room.code });
+    await request(
+      "/interests",
+      { labels: ["Pottery"], approvedIds: [] },
+      p.cookie,
+    );
+  }
+  const s = getSession(db, created.body.room.id)!;
+  const original = globalThis.fetch;
+  process.env.MODEL_API_KEY = "fake";
+  let calls = 0;
+  try {
+    globalThis.fetch = async () => {
+      calls++;
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                summary:
+                  "The table discussed pottery and making things together.",
+                recommendations: fallback(s).map((rec) => ({
+                  ...rec,
+                  transcriptIds: ["heard-1"],
+                })),
+              }),
+            },
+          },
+        ],
+      });
+    };
+    const r = await recommend(s, undefined, {
+      summary: "",
+      segments: [
+        {
+          id: "heard-1",
+          text: "We were making bowls together.",
+          speakerLabel: "Speaker A",
+        },
+      ],
+    });
+    assert.equal(calls, 1);
+    assert.equal(
+      r.summary,
+      "The table discussed pottery and making things together.",
+    );
+    assert.ok(
+      r.recommendations.every(
+        (rec) => rec.mode === "live" && rec.transcriptIds?.includes("heard-1"),
+      ),
+    );
+  } finally {
+    globalThis.fetch = original;
+    delete process.env.MODEL_API_KEY;
+  }
+});
+
+test("automatic conversation preparation happens after a completed turn, never on transcript ingestion", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Automatic round test" },
+    "",
+    true,
+  );
+  const code = created.body.room.code;
+  for (const name of ["Jade", "Ash", "Sky"]) {
+    const p = await request("/join", { name, code });
+    await request(
+      "/interests",
+      { labels: ["Cooking"], approvedIds: [] },
+      p.cookie,
+    );
+  }
+  const gm = await request("/questions/login", {
+    code,
+    key: "test-control-credential",
+  });
+  const rec = (
+    await request(
+      "/questions/recommendations",
+      { origin: "library" },
+      gm.cookie,
+    )
+  ).body.recommendations[0];
+  await request("/questions/assign", { recommendationId: rec.id }, gm.cookie);
+  await request("/questions/conversation", { automatic: true }, gm.cookie);
+  await request(
+    "/questions/transcript",
+    {
+      id: "automatic-1",
+      text: "We discussed how we would cook a meal together if every person could choose just one ingredient for a shared soup. One person wanted fresh herbs, another wanted tomatoes, and somebody else was determined to add noodles because they make every meal more comforting.",
+    },
+    gm.cookie,
+  );
+  assert.equal(getSession(db, code)!.suggestionBatches!.length, 1);
+  assert.equal(
+    (await request("/questions/clear", { status: "completed" }, gm.cookie))
+      .status,
+    200,
+  );
+  for (
+    let i = 0;
+    i < 20 && getSession(db, code)!.suggestionBatches!.length < 2;
+    i++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(
+    getSession(db, code)!.suggestionBatches!.at(-1)!.origin,
+    "conversation",
+  );
+  const before = getSession(db, code)!.suggestionBatches!.length;
+  await request("/questions/session", undefined, gm.cookie);
+  assert.equal(getSession(db, code)!.suggestionBatches!.length, before);
+});
+
+test("solo prompt assignments suggest a speaker but require explicit GM confirmation", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Guided speaker test" },
+    "",
+    true,
+  );
+  const code = created.body.room.code;
+  for (const name of ["Elena", "Kai", "Noor"]) {
+    const p = await request("/join", { name, code });
+    await request(
+      "/interests",
+      { labels: ["Photography"], approvedIds: [] },
+      p.cookie,
+    );
+  }
+  const s = getSession(db, code)!;
+  const rec = {
+    ...fallback(s)[0],
+    type: "Hot Seat" as const,
+    title: "A memorable photograph",
+    instructions:
+      "Everyone guesses what Elena likes photographing, then Elena can share her own answer.",
+    participants: [s.players[0].id],
+    sourceInterestIds: [s.players[0].interests[0].id],
+  };
+  s.recommendations = [rec];
+  save(db, s);
+  const gm = await request("/questions/login", {
+    code,
+    key: "test-control-credential",
+  });
+  await request("/questions/assign", { recommendationId: rec.id }, gm.cookie);
+  await request(
+    "/questions/transcript",
+    {
+      id: "guided-1",
+      text: "I like taking photographs on quiet walks.",
+      speakerLabel: "stream-one-speaker-1",
+    },
+    gm.cookie,
+  );
+  let feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.equal(feed.conversation.speakerHints.length, 1);
+  assert.equal(feed.conversation.speakerHints[0].name, "Elena");
+  assert.equal(feed.conversation.segments[0].speakerId, undefined);
+  assert.equal(
+    (
+      await request(
+        "/questions/speaker",
+        { speakerLabel: "stream-one-speaker-1", playerId: s.players[0].id },
+        gm.cookie,
+      )
+    ).status,
+    200,
+  );
+  feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.equal(feed.conversation.segments[0].speakerId, s.players[0].id);
+  assert.deepEqual(feed.conversation.speakerHints, []);
+  await request(
+    "/questions/transcript",
+    {
+      id: "guided-2",
+      text: "This might be somebody else answering first.",
+      speakerLabel: "stream-two-speaker-1",
+    },
+    gm.cookie,
+  );
+  feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.equal(feed.conversation.segments[1].speakerId, undefined);
+  const hint = feed.conversation.speakerHints[0];
+  assert.equal(
+    (
+      await request(
+        "/questions/speaker",
+        {
+          speakerLabel: hint.speakerLabel,
+          playerId: null,
+          dismissRoundId: hint.roundId,
+        },
+        gm.cookie,
+      )
+    ).status,
+    200,
+  );
+  feed = (await request("/questions/session", undefined, gm.cookie)).body;
+  assert.deepEqual(feed.conversation.speakerHints, []);
+  assert.equal(feed.conversation.segments[1].speakerId, undefined);
+  assert.equal(
+    (
+      await request(
+        "/questions/speaker",
+        {
+          speakerLabel: hint.speakerLabel,
+          playerId: null,
+          dismissRoundId: "not-this-room",
+        },
+        gm.cookie,
+      )
+    ).status,
+    400,
+  );
 });

@@ -3,12 +3,17 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { openDb, getSession } from "../server/db";
 import { questionsAccess } from "../server/questions-access";
 const code = process.argv.slice(2).find((arg) => !arg.startsWith("--"));
-if (!code) throw new Error("Usage: npm run questions:link -- ROOM [--file]");
+if (!code)
+  throw new Error("Usage: npm run questions:link -- ROOM [--control] [--file]");
 const db = openDb();
 try {
   const room = getSession(db, code);
   if (!room) throw new Error("Room not found.");
-  const { url } = questionsAccess(db, room);
+  const { url } = questionsAccess(
+    db,
+    room,
+    process.argv.includes("--control") ? "control" : "read",
+  );
   if (process.argv.includes("--file")) {
     mkdirSync("data", { recursive: true });
     writeFileSync("data/questions-access-link.txt", url + "\n", {

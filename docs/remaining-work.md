@@ -16,7 +16,7 @@ Updated October 25, 2026. This separates working browser features from integrati
 
 - [ ] Test voice introductions on real iOS and Android phones, including microphone denial, noisy rooms and keyboard dictation fallback.
 
-- [ ] Configure the server's `GM_API_KEY` and provision it securely to the trusted Vision Pro adapter. The room-scoped browser access link only grants read access.
+- [ ] Configure the server's `GM_API_KEY` and provision it securely to the trusted Vision Pro adapter. Use explicit --control links for browser testing; default links remain read-only.
 - [ ] Connect the web app to the existing relay at `wss://centerpiece-relay.onrender.com/ws`. The relay exists; the Destina adapter is still missing.
 - [ ] Map Vision Pro requests to the protected room operations for generating prompts, choosing or editing a question, selecting valid targets and recording completed or passed outcomes.
 - [ ] Agree on room IDs, message schemas and authentication across Destina, Vision Pro and Tina. The existing relay contract and Destina snapshots need an explicit mapping.
@@ -34,12 +34,16 @@ Updated October 25, 2026. This separates working browser features from integrati
 - [ ] Review public-endpoint abuse protection and enforce the Muse request allowance across every deployed generator. The local request cap is not a dollar budget or an account-wide provider spending limit.
 - [ ] Evaluate question quality with representative approved interests, including sparse profiles and similar player names. Use saved batches before paying for another generation.
 
-## Later conversation features
+## Conversation testing
 
-- [ ] Define recording consent, who can access transcripts and how long text is retained.
-- [ ] Add authenticated transcript ingestion with speaker IDs and timestamps.
-- [ ] Store conversation-based suggestion batches and render the real transcript in the private Conversation view.
-- [ ] Add explicit or rate-limited generation triggers, caching and a spending allowance for ongoing suggestions. Opening the page must continue to be free of model requests.
+- [x] Consent-gated Deepgram streaming, private transcript storage and test-text ingestion.
+- [x] Browser GM prompt selection, edits, completion and pass controls.
+- [x] Prompt-guided speaker suggestions with explicit GM confirmation and manual corrections.
+- [x] Bounded conversation generation with persistent request allowances and optional between-turn preparation.
+- [ ] Test Tina's actual microphone, PCM format, placement, background noise and overlapping speakers.
+- [ ] Verify browser microphone permissions on real iOS and Android devices.
+- [ ] Confirm speaker labels during a full recording; reconnects require fresh confirmation.
+- [ ] Verify production retention and consent wording with the intended deployment audience.
 
 ## Separate hardware and bonus work
 

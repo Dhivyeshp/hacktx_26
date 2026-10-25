@@ -30,16 +30,26 @@ path revokes the read cookie. A player cookie or read cookie never grants contro
 API access. All API responses use `Cache-Control: no-store`; cross-origin writes
 are rejected by the shared middleware.
 
-## Conversation and later transport
+## Browser control and conversation
 
-The feed has schemaVersion 1 and an explicit
-`conversation: {status: "not_connected", segments: []}` today. No transcript is
-invented or recorded. A later authorized ingestion path can persist transcript
-segments and batches with `origin: "conversation"`. It must define recording
-consent, retention and GM access before accepting real conversation content.
+CLI grants default to read-only. `questions:link -- ROOM --control` creates an
+explicit control grant; existing cookies keep their original permission.
+`POST /api/questions/login` with the GM key grants control. Control cookies
+remain room-scoped and cannot authenticate bearer control endpoints.
 
-For now, both pages fetch authoritative HTTP state every four seconds while
-visible and on visibility/pageshow. They never generate questions implicitly.
-The later WebSocket adapter can send room-version invalidations that trigger
-these same authorized fetches. Do not broadcast this private feed on public
-player channels. Selection still uses the existing bearer-protected control API.
+Authenticated browser controls post to `/api/questions/recommendations`, `/assign`,
+`/clear`, `/conversation`, `/transcript`, `/speaker` and `/audio-ticket`. The
+existing `/api/control/rooms/:code/*` bearer routes use the same handlers.
+`canControl` determines the displayed controls. Writes enforce permission on the server.
+
+Conversation snapshots include private final transcript segments, confirmed
+speaker mappings, tentative solo-prompt speaker hints, summary and request usage.
+Test text is labeled as such. No transcript or secret queue is in player snapshots.
+The authenticated `/api/audio` WebSocket accepts a one-use ticket in its first
+frame, then binary audio. Deepgram credentials remain on the server.
+
+Pages fetch authoritative HTTP state every four seconds while visible and on
+visibility/pageshow. Polling and transcript events never call Muse. Optional
+between-turn generation occurs only when a turn is cleared and enough new text
+exists. The later Vision Pro relay adapter is still separate work.
+See [live conversation](live-conversation.md) for operation and limits.

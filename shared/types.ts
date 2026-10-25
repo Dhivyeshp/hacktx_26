@@ -30,12 +30,15 @@ export type Recommendation = {
   sourceInterestIds: string[];
   mode: "live" | "fallback";
   score: number;
+  transcriptIds?: string[];
 };
 export type Round = {
   id: string;
   number: number;
   recommendation: Recommendation;
   status: "assigned" | "completed" | "passed";
+  assignedAt?: number;
+  endedAt?: number;
 };
 export type RoomInfo = {
   id: string;
@@ -97,6 +100,22 @@ export type TranscriptSegment = {
   speakerId?: string;
   text: string;
   at: number;
+  sequence?: number;
+  roundId?: string;
+  speakerLabel?: string;
+  origin?: "microphone" | "test";
+};
+export type ConversationState = {
+  status: "not_connected" | "live" | "paused";
+  segments: TranscriptSegment[];
+  summary: string;
+  consumedSequence: number;
+  sequence: number;
+  generatedRound?: number;
+  speakerLinks: Record<string, string>;
+  dismissedSpeakerHints?: string[];
+  automatic: boolean;
+  notice?: string;
 };
 export type QuestionsSnapshot = {
   schemaVersion: 1;
@@ -111,9 +130,24 @@ export type QuestionsSnapshot = {
   activeQuestion: Round | null;
   history: Round[];
   preparing: boolean;
+  canControl: boolean;
+  availableIds: string[];
   notice?: string;
   conversation: {
     status: "not_connected" | "live" | "paused";
     segments: TranscriptSegment[];
+    summary: string;
+    speakerHints: {
+      speakerLabel: string;
+      roundId: string;
+      playerId: string;
+      name: string;
+      excerpt: string;
+    }[];
+    automatic: boolean;
+    transcriptionReady: boolean;
+    notice?: string;
+    requestCount: number;
+    requestLimit: number;
   };
 };

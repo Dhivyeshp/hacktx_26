@@ -3,8 +3,11 @@ import { createServer } from "node:http";
 import { resolve } from "node:path";
 import express from "express";
 import { createApp } from "./app";
-const { app, db } = createApp();
+import { resetLiveRecordings } from "./conversation";
+const { app, db, audio } = createApp();
+resetLiveRecordings(db);
 const server = createServer(app);
+audio.attach(server);
 setInterval(() => {
   db.prepare("DELETE FROM connections WHERE expires_at<?").run(Date.now());
   db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());

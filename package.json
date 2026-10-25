@@ -18,7 +18,8 @@
     "chain:smoke": "npm run -w @centerpiece/chain smoke",
     "chain:serve": "npm run -w @centerpiece/chain serve",
     "chain:seed-shop": "npm run -w @centerpiece/chain seed-shop",
-    "questions:link": "tsx scripts/questions-link.ts"
+    "questions:link": "tsx scripts/questions-link.ts",
+    "tina:audio": "tsx scripts/tina-audio.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -28,6 +29,7 @@
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "ws": "^8.22.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -37,6 +39,7 @@
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^4.3.4",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",

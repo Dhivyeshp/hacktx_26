@@ -8,7 +8,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { openDb, getSession, save, event, type Session } from "./db";
 import { encrypt, tokenHash } from "./security";
-import { extract, recommend, validCandidate } from "./ai";
+import { extract, recommend, validCandidate, fallback } from "./ai";
 import {
   exchange,
   importProfile,
@@ -25,6 +25,17 @@ import {
   questionsSnapshot,
 } from "./rooms";
 import { questionsAccess } from "./questions-access";
+import {
+  configureConversationBudget,
+  conversationState,
+  ensureConversation,
+  appendTranscript,
+  segmentInput,
+  enoughConversation,
+  conversationInput,
+  reserveSessionRequest,
+} from "./conversation";
+import { createAudioBridge } from "./audio";
 import type { RoomEvent, Source } from "../shared/types";
 const cookie = "centerpiece";
 const text = z.string().trim().min(1).max(60);
@@ -32,6 +43,8 @@ export function createApp(db = openDb()) {
   db.prepare("DELETE FROM connections WHERE expires_at<?").run(Date.now());
   db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
   const app = express();
+  configureConversationBudget(db);
+  const audio = createAudioBridge(db);
   const generating = new Set<string>();
   const analyzingProfiles = new Set<string>();
   app.set("trust proxy", 1);
@@ -106,7 +119,12 @@ export function createApp(db = openDb()) {
       );
   }
   function room(req: Request) {
-    const s = getSession(db, req.params.code);
+    const s = getSession(
+      db,
+      req.params.code ||
+        (req as Request & { controlRoom?: string }).controlRoom ||
+        "",
+    );
     if (!s)
       throw Object.assign(
         new Error("This room could not be found. Scan the bot’s latest QR."),
@@ -330,12 +348,10 @@ export function createApp(db = openDb()) {
             interests: player.interests,
           }) !== before
         )
-          return res
-            .status(409)
-            .json({
-              error:
-                "Your profile changed while we were finding interests. Review it before trying again.",
-            });
+          return res.status(409).json({
+            error:
+              "Your profile changed while we were finding interests. Review it before trying again.",
+          });
         const oldIntroIds = new Set(
           previous
             .filter((source) => source.kind === "intro")
@@ -517,17 +533,19 @@ export function createApp(db = openDb()) {
     }),
   );
   const questionsCookie = "destina_questions";
-  function allowQuestions(res: Response, sessionId: string) {
+  function allowQuestions(
+    res: Response,
+    sessionId: string,
+    permission: "read" | "control" = "read",
+  ) {
     const token = randomBytes(32).toString("hex");
     const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
     db.prepare("DELETE FROM questions_access WHERE expires_at<?").run(
       Date.now(),
     );
-    db.prepare("INSERT INTO questions_access VALUES(?,?,?)").run(
-      tokenHash(token),
-      sessionId,
-      expiresAt,
-    );
+    db.prepare(
+      "INSERT INTO questions_access(token,session_id,expires_at,permission) VALUES(?,?,?,?)",
+    ).run(tokenHash(token), sessionId, expiresAt, permission);
     res.cookie(questionsCookie, token, {
       httpOnly: true,
       sameSite: "strict",
@@ -536,23 +554,44 @@ export function createApp(db = openDb()) {
       maxAge: 12 * 60 * 60 * 1000,
     });
   }
-  function questionsRoom(req: Request) {
+  function questionsRoom(req: Request, write = false) {
     const token = req.cookies[questionsCookie];
     const record =
       typeof token === "string"
         ? (db
             .prepare(
-              "SELECT session_id FROM questions_access WHERE token=? AND expires_at>?",
+              "SELECT session_id,permission FROM questions_access WHERE token=? AND expires_at>?",
             )
             .get(tokenHash(token), Date.now()) as
-            { session_id: string } | undefined)
+            { session_id: string; permission: string } | undefined)
         : undefined;
     const s = record && getSession(db, record.session_id);
     if (!s)
       throw Object.assign(new Error("Private Game Master access required."), {
         status: 401,
       });
+    if (write && record.permission !== "control")
+      throw Object.assign(
+        new Error("Open a Game Master control link to change this room."),
+        { status: 403 },
+      );
     return s;
+  }
+  function privateFeed(req: Request, s: Session) {
+    const record = db
+      .prepare(
+        "SELECT permission FROM questions_access WHERE token=? AND expires_at>?",
+      )
+      .get(
+        tokenHash(String(req.cookies[questionsCookie] || "")),
+        Date.now(),
+      ) as { permission: string } | undefined;
+    return questionsSnapshot(
+      s,
+      generating.has(s.id),
+      record?.permission === "control",
+      db,
+    );
   }
   app.post(
     "/api/questions/access",
@@ -562,18 +601,25 @@ export function createApp(db = openDb()) {
         .parse(req.body);
       const record = db
         .prepare(
-          "DELETE FROM questions_invites WHERE token=? AND expires_at>? RETURNING session_id",
+          "DELETE FROM questions_invites WHERE token=? AND expires_at>? RETURNING session_id,permission",
         )
         .get(tokenHash(token), Date.now()) as
-        { session_id: string } | undefined;
+        { session_id: string; permission: "read" | "control" } | undefined;
       const s = record && getSession(db, record.session_id);
       if (!s)
         return res.status(401).json({
           error:
             "This access link expired or was already used. Request a new link.",
         });
-      allowQuestions(res, s.id);
-      res.json(questionsSnapshot(s, generating.has(s.id)));
+      allowQuestions(res, s.id, record!.permission);
+      res.json(
+        questionsSnapshot(
+          s,
+          generating.has(s.id),
+          record!.permission === "control",
+          db,
+        ),
+      );
     }),
   );
   app.post(
@@ -599,8 +645,8 @@ export function createApp(db = openDb()) {
         return res.status(403).json({
           error: "The room code or access key could not be verified.",
         });
-      allowQuestions(res, s.id);
-      res.json(questionsSnapshot(s, generating.has(s.id)));
+      allowQuestions(res, s.id, "control");
+      res.json(questionsSnapshot(s, generating.has(s.id), true, db));
     }),
   );
   app.get(
@@ -612,7 +658,7 @@ export function createApp(db = openDb()) {
           error:
             "Your access is for another room. Open its private link or sign in again.",
         });
-      res.json(questionsSnapshot(s, generating.has(s.id)));
+      res.json(privateFeed(req, s));
     }),
   );
   app.delete(
@@ -631,6 +677,28 @@ export function createApp(db = openDb()) {
       });
       res.status(204).end();
     }),
+  );
+  app.use(
+    [
+      "/api/questions/recommendations",
+      "/api/questions/assign",
+      "/api/questions/clear",
+      "/api/questions/finish",
+      "/api/questions/conversation",
+      "/api/questions/transcript",
+      "/api/questions/speaker",
+      "/api/questions/audio-ticket",
+    ],
+    (req, res, next) => {
+      try {
+        req.params.code = questionsRoom(req, true).code;
+        (req as Request & { controlRoom?: string }).controlRoom =
+          req.params.code;
+        next();
+      } catch (e) {
+        next(e);
+      }
+    },
   );
   // The Vision Pro transport will call these operations later. Player cookies grant no control access.
   app.use("/api/control", (req, res, next) => {
@@ -670,7 +738,10 @@ export function createApp(db = openDb()) {
   app.post(
     "/api/control/rooms/:code/questions-access",
     wrap((req, res) => {
-      res.json(questionsAccess(db, room(req)));
+      const { permission } = z
+        .object({ permission: z.enum(["read", "control"]).default("read") })
+        .parse(req.body || {});
+      res.json(questionsAccess(db, room(req), permission));
     }),
   );
   app.get(
@@ -679,7 +750,10 @@ export function createApp(db = openDb()) {
   );
 
   app.post(
-    "/api/control/rooms/:code/recommendations",
+    [
+      "/api/control/rooms/:code/recommendations",
+      "/api/questions/recommendations",
+    ],
     wrap(async (req, res) => {
       const s = room(req);
       active(s);
@@ -702,6 +776,10 @@ export function createApp(db = openDb()) {
         .object({
           context: z.string().max(800).default(""),
           targetPlayerId: z.string().optional(),
+          origin: z
+            .enum(["profiles", "conversation", "library"])
+            .default("profiles"),
+          replace: z.boolean().default(false),
         })
         .parse(req.body);
       if (
@@ -711,25 +789,69 @@ export function createApp(db = openDb()) {
         return res
           .status(400)
           .json({ error: "The selected target is not in this room." });
+      if (s.recommendations.length && !input.replace)
+        return res.json(controlSnapshot(s));
+      const c = ensureConversation(s);
+      if (
+        input.origin === "conversation" &&
+        (c.generatedRound === s.rounds.length || !enoughConversation(s))
+      ) {
+        return res.status(409).json({
+          error:
+            c.generatedRound === s.rounds.length
+              ? "Conversation prompts were already prepared for this turn. Use the saved set or play another turn."
+              : "Add at least 40 new transcript words before preparing conversation prompts.",
+        });
+      }
       s.context = input.context;
       touch(s, "recommendations.requested");
-      const version = s.version;
+      const baseline = JSON.stringify({
+        players: s.players,
+        rounds: s.rounds,
+        context: s.context,
+      });
+      const conversation =
+        input.origin === "conversation" ? conversationInput(s) : undefined;
+      const consumedSequence = c.sequence;
       generating.add(s.id);
       try {
-        const result = await recommend(s, input.targetPlayerId);
+        const result =
+          input.origin === "library"
+            ? {
+                recommendations: fallback(s, input.targetPlayerId),
+                notice: "From the question library. No Muse request was made.",
+                summary: undefined,
+              }
+            : await recommend(s, input.targetPlayerId, conversation, () =>
+                reserveSessionRequest(db, s.id),
+              );
         const current = getSession(db, s.id)!;
-        if (current.version !== version)
+        if (
+          current.status === "finished" ||
+          JSON.stringify({
+            players: current.players,
+            rounds: current.rounds,
+            context: current.context,
+          }) !== baseline
+        )
           return res.status(409).json({
             error: "The room changed. Request fresh recommendations.",
           });
-        Object.assign(current, result);
+        current.recommendations = result.recommendations;
+        current.notice = result.notice;
         current.suggestionBatches ??= [];
         current.suggestionBatches.push({
           id: randomUUID(),
           createdAt: Date.now(),
-          origin: "profiles",
+          origin: input.origin === "conversation" ? "conversation" : "profiles",
           recommendations: structuredClone(result.recommendations),
         });
+        if (conversation) {
+          const state = ensureConversation(current);
+          state.consumedSequence = consumedSequence;
+          state.generatedRound = current.rounds.length;
+          state.summary = result.summary || state.summary;
+        }
         touch(current, "recommendations.ready");
         res.json(controlSnapshot(current));
       } finally {
@@ -738,7 +860,7 @@ export function createApp(db = openDb()) {
     }),
   );
   app.post(
-    "/api/control/rooms/:code/assign",
+    ["/api/control/rooms/:code/assign", "/api/questions/assign"],
     wrap((req, res) => {
       const s = room(req);
       active(s);
@@ -763,6 +885,7 @@ export function createApp(db = openDb()) {
         id: randomUUID(),
         number: s.rounds.length + 1,
         status: "assigned",
+        assignedAt: Date.now(),
         recommendation: {
           ...rec,
           instructions: input.instructions || rec.instructions,
@@ -775,7 +898,7 @@ export function createApp(db = openDb()) {
     }),
   );
   app.post(
-    "/api/control/rooms/:code/clear",
+    ["/api/control/rooms/:code/clear", "/api/questions/clear"],
     wrap((req, res) => {
       const s = room(req);
       active(s);
@@ -790,18 +913,65 @@ export function createApp(db = openDb()) {
           .status(409)
           .json({ error: "No question is currently assigned." });
       question.status = status;
+      question.endedAt = Date.now();
       for (const p of s.players)
         if (question.recommendation.participants.includes(p.id))
           p.participation++;
       touch(s, "question.cleared");
       res.json(controlSnapshot(s));
+      if (s.conversation?.automatic && enoughConversation(s)) {
+        const invoke = async () => {
+          if (generating.has(s.id)) return;
+          generating.add(s.id);
+          const input = conversationInput(s),
+            consumed = conversationState(s).sequence;
+          const baseline = JSON.stringify({
+            players: s.players,
+            rounds: s.rounds,
+          });
+          try {
+            const result = await recommend(s, undefined, input, () =>
+              reserveSessionRequest(db, s.id),
+            );
+            const current = getSession(db, s.id)!;
+            if (
+              current.status === "finished" ||
+              activeQuestion(current) ||
+              JSON.stringify({
+                players: current.players,
+                rounds: current.rounds,
+              }) !== baseline
+            )
+              return;
+            current.recommendations = result.recommendations;
+            current.notice = result.notice;
+            current.suggestionBatches ??= [];
+            current.suggestionBatches.push({
+              id: randomUUID(),
+              createdAt: Date.now(),
+              origin: "conversation",
+              recommendations: structuredClone(result.recommendations),
+            });
+            const c = ensureConversation(current);
+            c.summary = result.summary || c.summary;
+            c.consumedSequence = consumed;
+            c.generatedRound = current.rounds.length;
+            touch(current, "recommendations.ready");
+          } finally {
+            generating.delete(s.id);
+          }
+        };
+        void invoke().catch(() => {});
+      }
     }),
   );
   app.post(
-    "/api/control/rooms/:code/finish",
+    ["/api/control/rooms/:code/finish", "/api/questions/finish"],
     wrap((req, res) => {
       const s = room(req);
       active(s);
+      audio.stop(s.id);
+      s.conversation = undefined;
       s.status = "finished";
       s.sources = {};
       s.recommendations = [];
@@ -812,6 +982,112 @@ export function createApp(db = openDb()) {
       db.prepare("DELETE FROM oauth WHERE session_id=?").run(s.id);
       touch(s, "room.closed");
       res.json(controlSnapshot(s));
+    }),
+  );
+  app.post(
+    ["/api/questions/conversation", "/api/control/rooms/:code/conversation"],
+    wrap((req, res) => {
+      const s = room(req);
+      active(s);
+      const input = z
+        .object({
+          automatic: z.boolean().optional(),
+          action: z.enum(["pause", "clear"]).optional(),
+        })
+        .parse(req.body);
+      const c = ensureConversation(s);
+      if (input.automatic !== undefined) c.automatic = input.automatic;
+      if (input.action) {
+        audio.stop(s.id);
+        c.status = "paused";
+      }
+      if (input.action === "clear") {
+        c.segments = [];
+        c.summary = "";
+        c.consumedSequence = c.sequence;
+        c.speakerLinks = {};
+        c.dismissedSpeakerHints = [];
+      }
+      touch(s, "conversation.updated");
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    ["/api/questions/transcript", "/api/control/rooms/:code/transcript"],
+    wrap((req, res) => {
+      const s = room(req);
+      active(s);
+      const input = segmentInput.parse(req.body);
+      const changed = appendTranscript(s, input, "test");
+      if (changed) touch(s, "transcript.appended");
+      res.json({ ok: true, duplicate: !changed });
+    }),
+  );
+  app.post(
+    ["/api/questions/speaker", "/api/control/rooms/:code/speaker"],
+    wrap((req, res) => {
+      const s = room(req);
+      active(s);
+      if (generating.has(s.id))
+        return res
+          .status(409)
+          .json({
+            error:
+              "Wait for prompt preparation to finish before changing speaker assignments.",
+          });
+      const { speakerLabel, playerId, dismissRoundId } = z
+        .object({
+          speakerLabel: z.string().min(1).max(100),
+          playerId: z.string().nullable(),
+          dismissRoundId: z.string().optional(),
+        })
+        .parse(req.body);
+      const c = ensureConversation(s);
+      if (!c.segments.some((segment) => segment.speakerLabel === speakerLabel))
+        return res.status(400).json({ error: "Unknown speaker label." });
+      if (playerId && !s.players.some((player) => player.id === playerId))
+        return res
+          .status(400)
+          .json({ error: "That player is not in this room." });
+      if (dismissRoundId) {
+        if (
+          !c.segments.some(
+            (segment) =>
+              segment.speakerLabel === speakerLabel &&
+              segment.roundId === dismissRoundId,
+          )
+        )
+          return res
+            .status(400)
+            .json({ error: "That prompt has no matching speaker evidence." });
+        c.dismissedSpeakerHints = [
+          ...(c.dismissedSpeakerHints || []),
+          `${speakerLabel}:${dismissRoundId}`,
+        ].slice(-100);
+      }
+      if (playerId) c.speakerLinks[speakerLabel] = playerId;
+      else delete c.speakerLinks[speakerLabel];
+      touch(s, "speaker.mapped");
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    ["/api/questions/audio-ticket", "/api/control/rooms/:code/audio-ticket"],
+    wrap((req, res) => {
+      const s = room(req);
+      active(s);
+      const { consent, format } = z
+        .object({
+          consent: z.literal(true),
+          format: z.enum(["container", "linear16"]).default("container"),
+        })
+        .parse(req.body);
+      if (!process.env.DEEPGRAM_API_KEY)
+        return res.status(503).json({
+          error:
+            "Add DEEPGRAM_API_KEY on the server to enable hosted transcription. Transcript testing is available without it.",
+        });
+      res.json(audio.ticket(s.id, format));
     }),
   );
   app.use("/api", (_req, res) =>
@@ -831,6 +1107,7 @@ export function createApp(db = openDb()) {
   return {
     app,
     db,
+    audio,
     identity,
     setEventSink: (fn: (event: RoomEvent) => void) => {
       eventSink = fn;

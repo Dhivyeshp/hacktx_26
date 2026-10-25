@@ -210,21 +210,22 @@ on the same domain; an in-app browser or a different browser may need to join ag
 A single shared tag URL cannot identify a physical relic or infer the player’s room
 without their saved player session.
 
-**`/questions?room=ROOMCODE`** is a private, read-only Game Master view. It retains
-generated suggestion batches, the current selection and earlier played questions.
-Opening or refreshing it never requests Muse generation. The conversation tab is
-an explicitly unconnected placeholder until the transcript integration is added.
-Vision Pro remains responsible for requesting, choosing and clearing questions.
+**`/questions?room=ROOMCODE`** is the private Game Master view. It retains
+suggestions, the current selection, player readiness and earlier turns. Opening
+or refreshing it never requests Muse generation.
 
-For local access, run `npm run questions:link -- ROOMCODE`. Open the resulting
-private link once within ten minutes. `--file` saves it in the ignored
-`data/questions-access-link.txt` instead of printing it. Do not put this private
-link on Tina’s public QR code or NFC tags. Access lasts twelve hours in an
-HttpOnly, room-scoped cookie; “Close private view” revokes it. An authenticated
-adapter can mint links with `POST /api/control/rooms/:code/questions-access`.
-Alternatively, enter the room code and configured `GM_API_KEY` on `/questions`;
-the browser never stores that key. These cookies grant read access only, never
-permission to select questions. See [the feed interface](docs/questions-feed.md).
+Run `npm run questions:link -- ROOMCODE --control --file` to create a private
+link with browser testing controls. Open `data/questions-access-link.txt` once
+within ten minutes. Omit `--control` for read-only access. Never put these links
+on Tina's public QR code or NFC tags. Access lasts twelve hours in an HttpOnly,
+room-scoped cookie; “Close private view” revokes it. Signing in with the configured
+`GM_API_KEY` also grants control. The browser cookie does not grant bearer API access.
+
+The control view can choose or edit prompts, record completed/passed turns and
+transcribe consenting participants through Deepgram. Assigned solo prompts offer
+a suggested speaker name that the GM must confirm. Muse can prepare a bounded
+batch from recent conversation between turns. See [live conversation setup](docs/live-conversation.md)
+and [the feed interface](docs/questions-feed.md).
 
 Player navigation contains Profile and Prompt. The profile footer offers Reset profile, which clears the Instagram connection, OAuth attempts, imported text and interests while keeping the player name and room. Previously shared questions stay in room history. Imported text is explained alongside the Instagram connection and can be expanded to review the original bio and captions.
 

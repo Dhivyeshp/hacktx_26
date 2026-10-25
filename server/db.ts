@@ -8,6 +8,7 @@ import type {
   Recommendation,
   Round,
   SuggestionBatch,
+  ConversationState,
 } from "../shared/types";
 export type Session = {
   id: string;
@@ -24,6 +25,7 @@ export type Session = {
   notice?: string;
   profileNotices?: Record<string, string>;
   profileRevisions?: Record<string, number>;
+  conversation?: ConversationState;
 };
 export function openDb(
   path = process.env.DATABASE_PATH || "data/centerpiece.db",
@@ -38,6 +40,18 @@ export function openDb(
  CREATE TABLE IF NOT EXISTS questions_invites(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS questions_access(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,type TEXT NOT NULL,created_at INTEGER NOT NULL,body TEXT NOT NULL);`);
+  for (const table of ["questions_invites", "questions_access"]) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as {
+      name: string;
+    }[];
+    if (!columns.some((c) => c.name === "permission"))
+      db.exec(
+        `ALTER TABLE ${table} ADD COLUMN permission TEXT NOT NULL DEFAULT 'read'`,
+      );
+  }
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS audio_tickets(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL,format TEXT NOT NULL)",
+  );
   return db;
 }
 export type DB = ReturnType<typeof openDb>;

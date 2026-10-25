@@ -7,6 +7,11 @@ import type {
   QuestionsSnapshot,
 } from "../shared/types";
 import { save, event, type DB, type Session } from "./db";
+import {
+  conversationState,
+  sessionRequestUsage,
+  speakerHints,
+} from "./conversation";
 import { instagramReady } from "./instagram";
 export function createRoom(db: DB, name: string): Session {
   const room: Session = {
@@ -94,6 +99,8 @@ export function controlSnapshot(s: Session): ControlSnapshot {
 export function questionsSnapshot(
   s: Session,
   preparing = false,
+  canControl = false,
+  db?: DB,
 ): QuestionsSnapshot {
   const batches = s.suggestionBatches?.length
     ? s.suggestionBatches
@@ -120,7 +127,23 @@ export function questionsSnapshot(
     activeQuestion: s.status === "finished" ? null : activeQuestion(s),
     history: s.rounds,
     preparing,
+    canControl,
+    availableIds: s.recommendations.map((r) => r.id),
     notice: s.notice,
-    conversation: { status: "not_connected", segments: [] },
+    conversation: {
+      status: conversationState(s).status,
+      summary: conversationState(s).summary,
+      speakerHints: speakerHints(s),
+      automatic: conversationState(s).automatic,
+      notice: conversationState(s).notice,
+      segments: conversationState(s).segments.map((segment) => ({
+        ...segment,
+        speakerId:
+          conversationState(s).speakerLinks[segment.speakerLabel || ""] ||
+          segment.speakerId,
+      })),
+      transcriptionReady: !!process.env.DEEPGRAM_API_KEY,
+      ...sessionRequestUsage(s.id, db),
+    },
   };
 }
