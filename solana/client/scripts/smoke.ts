@@ -37,3 +37,6 @@ const { mint, signature } = await chain.mintKeepsake({
 })
 console.log(`\nkeepsake ${mint.toBase58()}\n  ${chain.explorer(signature)}`)
 console.log('\nprofile', await chain.profile(a.publicKey))
+
+// The RPC websocket keeps the event loop alive.
+process.exit(0)

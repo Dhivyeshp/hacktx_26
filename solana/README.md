@@ -14,6 +14,17 @@ Only the `admin` key stored in `Config` (the game server) can register players, 
 
 Points are earned for interacting with people. The scorer (off chain, built by the data owner) sends `{ wallet, points, connections }` per player. The program enforces the cap, pays once per round, and turns xp into badge levels with `level = 1 + floor(sqrt(xp / 10))`.
 
+## Devnet deployment
+
+| | |
+| --- | --- |
+| Program | [`DqqLyrxUPAiJ2m3Fu4uLL6GirTH2cSXXS9wJHmGngaZX`](https://explorer.solana.com/address/DqqLyrxUPAiJ2m3Fu4uLL6GirTH2cSXXS9wJHmGngaZX?cluster=devnet) |
+| TABLE coin mint | [`EpxWjyRMXqn2swGrSTQeiNqZPjm4oxGn4Zxy1RS8uofD`](https://explorer.solana.com/address/EpxWjyRMXqn2swGrSTQeiNqZPjm4oxGn4Zxy1RS8uofD?cluster=devnet) |
+| Admin / upgrade authority | `Ge77yDtK9UsxEfvtF63G5MVuHxuNvm72acp7j6g6kXZJ` (devnet only) |
+| Chain service | `https://centerpiece-chain.onrender.com` (`/healthz`) |
+
+The public devnet RPC rate-limits deploys (429s). Use a Helius devnet URL as `SOLANA_RPC` and `--url` for deploys.
+
 ## Layout
 
 ```

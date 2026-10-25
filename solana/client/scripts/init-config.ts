@@ -17,3 +17,6 @@ if (existing) {
 }
 console.log(`coin mint ${chain.pda.coinMint.toBase58()}  ${chain.explorer(chain.pda.coinMint.toBase58(), 'address')}`)
 console.log(`metadata  ${chain.metadataBaseUrl}/meta/coin.json`)
+
+// The RPC websocket keeps the event loop alive.
+process.exit(0)
