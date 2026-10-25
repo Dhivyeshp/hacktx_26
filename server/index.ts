@@ -8,6 +8,10 @@ const server = createServer(app);
 setInterval(() => {
   db.prepare("DELETE FROM connections WHERE expires_at<?").run(Date.now());
   db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
+  db.prepare("DELETE FROM questions_invites WHERE expires_at<?").run(
+    Date.now(),
+  );
+  db.prepare("DELETE FROM questions_access WHERE expires_at<?").run(Date.now());
 }, 60000).unref();
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(resolve("dist")));

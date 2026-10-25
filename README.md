@@ -197,3 +197,30 @@ controller and palette. On phones, profiles with interests place that list first
 connection/privacy details are collapsed, and save/continue actions remain at
 the bottom with safe-area spacing. Imported text and question explanations stay
 available through disclosures.
+
+### Shared NFC link and private questions
+
+Write **`https://your-domain/relic`** onto every NFC tag. `/c` still works for
+existing tags. The link uses the phone’s joined room and always reads that room’s
+current GM selection. It updates every four seconds and when returning to the
+page. Tapping does not claim or consume a relic. The assigned player alone sees
+private Bounty instructions. Players should onboard and tap using the same browser
+on the same domain; an in-app browser or a different browser may need to join again.
+A single shared tag URL cannot identify a physical relic or infer the player’s room
+without their saved player session.
+
+**`/questions?room=ROOMCODE`** is a private, read-only Game Master view. It retains
+generated suggestion batches, the current selection and earlier played questions.
+Opening or refreshing it never requests Muse generation. The conversation tab is
+an explicitly unconnected placeholder until the transcript integration is added.
+Vision Pro remains responsible for requesting, choosing and clearing questions.
+
+For local access, run `npm run questions:link -- ROOMCODE`. Open the resulting
+private link once within ten minutes. `--file` saves it in the ignored
+`data/questions-access-link.txt` instead of printing it. Do not put this private
+link on Tina’s public QR code or NFC tags. Access lasts twelve hours in an
+HttpOnly, room-scoped cookie; “Close private view” revokes it. An authenticated
+adapter can mint links with `POST /api/control/rooms/:code/questions-access`.
+Alternatively, enter the room code and configured `GM_API_KEY` on `/questions`;
+the browser never stores that key. These cookies grant read access only, never
+permission to select questions. See [the feed interface](docs/questions-feed.md).

@@ -17,7 +17,8 @@
     "chain:init": "npm run -w @centerpiece/chain init",
     "chain:smoke": "npm run -w @centerpiece/chain smoke",
     "chain:serve": "npm run -w @centerpiece/chain serve",
-    "chain:seed-shop": "npm run -w @centerpiece/chain seed-shop"
+    "chain:seed-shop": "npm run -w @centerpiece/chain seed-shop",
+    "questions:link": "tsx scripts/questions-link.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

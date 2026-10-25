@@ -23,6 +23,7 @@ import type {
   InterestSuggestion,
 } from "../shared/types";
 import "./style.css";
+import { Questions } from "./questions";
 import { interestLabel, importSummary } from "./profile-copy";
 import { interestSelectionChanged } from "./profile-state";
 async function api(path: string, body?: unknown, method?: string) {
@@ -54,7 +55,9 @@ function App() {
     query.get("join") ||
     ""
   ).toUpperCase();
-  const fromChip = location.pathname === "/c";
+  const fromChip = ["/c", "/relic"].includes(
+    location.pathname.replace(/\/$/, ""),
+  );
   const [s, setS] = useState<Snapshot | null>(null),
     [loaded, setLoaded] = useState(false),
     [view, setView] = useState<"profile" | "ready" | "capsule">(
@@ -352,7 +355,7 @@ function App() {
               >
                 At the table
               </button>
-              <a className={view === "capsule" ? "selected" : ""} href="/c">
+              <a className={view === "capsule" ? "selected" : ""} href="/relic">
                 Relic
               </a>
               <span className="player-name">
@@ -422,7 +425,7 @@ function App() {
                     <p>Your Game Master is choosing the next question.</p>
                     <p>Tap the chip inside your relic to open it here.</p>
                   </div>
-                  <a className="secondary full" href="/c">
+                  <a className="secondary full" href="/relic">
                     Your relic <ArrowUpRight size={16} />
                   </a>
                   <div className="quiet-note">
@@ -836,7 +839,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
     const seq = ++serial.current;
     setRefreshing(true);
     try {
-      const next: CapsuleSnapshot = await api("/capsule");
+      const next: CapsuleSnapshot = await api("/relic");
       if (seq === serial.current) {
         setData(next);
         setError("");
@@ -857,20 +860,26 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
       if (!document.hidden) refresh();
     };
     document.addEventListener("visibilitychange", focus);
+    window.addEventListener("pageshow", focus);
     return () => {
       serial.current++;
       clearInterval(timer);
       document.removeEventListener("visibilitychange", focus);
+      window.removeEventListener("pageshow", focus);
     };
   }, [s.room.id]);
   const p = data?.prompt;
+  const involved = p?.participants.some((player) => player.id === s.me.id);
+  const names = p?.participants
+    .map((player) => (player.id === s.me.id ? "You" : player.name))
+    .join(" and ");
   return (
     <section className="capsule-page">
       <div className="capsule-heading">
         <span className="eyebrow">YOUR RELIC</span>
         <span className="live-label">
           <span className="dot" />
-          YOUR ROOM’S CURRENT RELIC
+          {s.room.name}
         </span>
       </div>
       {error ? (
@@ -891,7 +900,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
         <article className="prompt-card" key={p.id}>
           <div className="prompt-top">
             <span className="eyebrow">
-              RELIC {String(p.number).padStart(2, "0")} / {p.type.toUpperCase()}
+              RELIC {String(p.number).padStart(2, "0")}
             </span>
             <span className="duration">
               <Clock size={14} />
@@ -899,22 +908,22 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
             </span>
           </div>
 
-          <span className="target-label">
-            {p.isTarget
-              ? "THIS ONE IS FOR YOU"
-              : `FOR ${p.participants[0]?.name.toUpperCase()}`}
-          </span>
-          <h1>{p.title}</h1>
-          <p className="prompt-instructions">{p.instructions}</p>
-          <div className="prompt-players">
-            <Users size={15} />
-            {p.participants.map((p) => p.name).join(" & ")}
+          <div className="relic-cover">
+            <span className="target-label">
+              {involved ? "YOUR TURN" : "AT YOUR TABLE"}
+            </span>
+            <h1>{p.type}</h1>
+            <p className="relic-for">{names}</p>
+          </div>
+          <div className="relic-question" aria-live="polite">
+            <h2>{p.title}</h2>
+            <p className="prompt-instructions">{p.instructions}</p>
           </div>
           {p.secret ? (
             <div className="private-prompt">
               <LockKeyhole size={19} />
               <div>
-                <span className="eyebrow">FOR YOUR EYES ONLY</span>
+                <span className="eyebrow">JUST FOR YOU</span>
                 <p>{p.secret}</p>
               </div>
             </div>
@@ -933,12 +942,8 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
       ) : (
         <div className="waiting-prompt">
           <span className="eyebrow">BETWEEN QUESTIONS</span>
-          <h1>
-            A moment
-            <br />
-            <em>between relics.</em>
-          </h1>
-          <p>Your next question will appear here.</p>
+          <h1>Your next relic.</h1>
+          <p>It will appear here when your Game Master is ready.</p>
           {!s.me.interests.some((i) => i.approved) && (
             <button className="secondary" onClick={onProfile}>
               Add your interests while you wait <ArrowRight size={16} />
@@ -953,11 +958,19 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
         </span>
         <button className="text-button" disabled={refreshing} onClick={refresh}>
           <RefreshCw className={refreshing ? "spin" : ""} size={14} />
-          Check for a new question
+          Refresh question
         </button>
       </div>
-      <p className="capsule-note">Your relic follows your room.</p>
+      <p className="capsule-note">
+        This page updates when your Game Master chooses a question.
+      </p>
     </section>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  location.pathname.replace(/\/$/, "") === "/questions" ? (
+    <Questions />
+  ) : (
+    <App />
+  ),
+);

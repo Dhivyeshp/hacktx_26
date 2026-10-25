@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { once } from "node:events";
 import { createApp } from "../server/app";
 import { openDb, getSession, save } from "../server/db";
-import { capsuleSnapshot, snapshot } from "../server/rooms";
+import { capsuleSnapshot, snapshot, questionsSnapshot } from "../server/rooms";
 import {
   fallback,
   extract,
@@ -15,7 +15,8 @@ import {
   validCandidate,
   recommend,
 } from "../server/ai";
-import { encrypt, decrypt } from "../server/security";
+import { questionsAccess } from "../server/questions-access";
+import { encrypt, decrypt, tokenHash } from "../server/security";
 import { importProfile, exchange } from "../server/instagram";
 import { z } from "zod";
 import type { RoomEvent } from "../shared/types";
@@ -93,6 +94,8 @@ test("only the trusted control interface can create a room; unset key fails clos
   sid = r.body.room.id;
   assert.equal(r.body.joinPath, `/join/${code}`);
   assert.equal(r.body.capsulePath, "/c");
+  assert.equal(r.body.relicPath, "/relic");
+  assert.equal(r.body.questionsPath, `/questions?room=${code}`);
   assert.equal(r.body.players.length, 0);
 });
 test("bot room lookup exposes only join information; players join without becoming a GM", async () => {
@@ -134,6 +137,7 @@ test("bot room lookup exposes only join information; players join without becomi
   }
   assert.equal((await request("/session")).status, 401);
   assert.equal((await request("/capsule")).status, 401);
+  assert.equal((await request("/relic")).status, 401);
 });
 test("same room QR and player cookie do not create duplicate players", async () => {
   const r = await request("/join", { code, name: "Elijah" }, a);
@@ -282,6 +286,8 @@ test("identical capsule URL resolves active question; secret belongs only to tar
   assert.equal(other.body.prompt.secret, undefined);
   assert.equal(partner.body.prompt.secret, undefined);
   assert.ok(target.body.prompt.secret);
+  assert.deepEqual((await request("/relic", undefined, c)).body, target.body);
+  assert.deepEqual((await request("/relic", undefined, a)).body, other.body);
   assert.equal(target.body.prompt.isTarget, true);
   assert.equal(target.body.prompt.reason, undefined);
   assert.equal(target.body.prompt.sourceInterestIds, undefined);
@@ -724,4 +730,203 @@ test("saved profile analysis uses existing excerpts and preserves approval bound
     globalThis.fetch = original;
     delete process.env.MODEL_API_KEY;
   }
+});
+
+test("private feed access is one-use, room scoped, read-only and revocable", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Private feed test" },
+    "",
+    true,
+  );
+  const room = created.body.room;
+  const player = await request("/join", {
+    code: room.code,
+    name: "Private player",
+  });
+  assert.equal(
+    (await request("/questions/session", undefined, player.cookie)).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(
+        `/control/rooms/${room.code}/questions-access`,
+        {},
+        player.cookie,
+      )
+    ).status,
+    403,
+  );
+  const grant = await request(
+    `/control/rooms/${room.code}/questions-access`,
+    {},
+    "",
+    true,
+  );
+  assert.equal(grant.status, 200);
+  const token = new URLSearchParams(new URL(grant.body.url).hash.slice(1)).get(
+    "access",
+  )!;
+  assert.equal(
+    db.prepare("SELECT token FROM questions_invites WHERE token=?").get(token),
+    undefined,
+  );
+  const expired = questionsAccess(db, getSession(db, room.id)!);
+  const expiredToken = new URLSearchParams(
+    new URL(expired.url).hash.slice(1),
+  ).get("access")!;
+  db.prepare("UPDATE questions_invites SET expires_at=0 WHERE token=?").run(
+    tokenHash(expiredToken),
+  );
+  assert.equal(
+    (await request("/questions/access", { token: expiredToken })).status,
+    401,
+  );
+  assert.equal(
+    (await request("/questions/access", { token: "0".repeat(64) })).status,
+    401,
+  );
+  const opened = await request("/questions/access", { token });
+  assert.equal(opened.status, 200);
+  assert.equal(opened.body.room.code, room.code);
+  assert.equal((await request("/questions/access", { token })).status, 401);
+  const scoped = await request(
+    `/questions/session?room=${room.code}`,
+    undefined,
+    opened.cookie,
+  );
+  assert.equal(scoped.status, 200);
+  assert.equal(
+    (await request(`/questions/session?room=XXXXXX`, undefined, opened.cookie))
+      .status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        `/control/rooms/${room.code}/recommendations`,
+        {},
+        opened.cookie,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request("/session", undefined, opened.cookie)).status,
+    401,
+  );
+  assert.equal(
+    (await request("/questions/login", { code: room.code, key: "bad-key" }))
+      .status,
+    403,
+  );
+  const login = await request("/questions/login", {
+    code: room.code,
+    key: "test-control-credential",
+  });
+  assert.equal(login.status, 200);
+  assert.equal(
+    (
+      await request(
+        "/questions/session",
+        undefined,
+        login.cookie,
+        false,
+        "DELETE",
+      )
+    ).status,
+    204,
+  );
+  assert.equal(
+    (await request("/questions/session", undefined, login.cookie)).status,
+    401,
+  );
+  db.prepare("UPDATE questions_access SET expires_at=0").run();
+  assert.equal(
+    (await request("/questions/session", undefined, opened.cookie)).status,
+    401,
+  );
+});
+
+test("private question batches survive selection and restart without exposing imported text", async () => {
+  const created = await request(
+    "/control/rooms",
+    { name: "Feed archive test" },
+    "",
+    true,
+  );
+  const room = created.body.room;
+  const control = `/control/rooms/${room.code}`;
+  const cookies: string[] = [];
+  for (const name of ["Lark", "River", "Robin"]) {
+    const player = await request("/join", { code: room.code, name });
+    cookies.push(player.cookie);
+    await request(
+      "/interests",
+      { labels: ["Pottery"], approvedIds: [] },
+      player.cookie,
+    );
+  }
+  const stored = getSession(db, room.id)!;
+  stored.sources[stored.players[0].id].push({
+    id: "private-bio",
+    text: "Never expose this imported bio",
+    kind: "bio",
+  });
+  save(db, stored);
+  const generated = await request(control + "/recommendations", {}, "", true);
+  assert.equal(generated.status, 200);
+  const bounty = generated.body.recommendations.find(
+    (r: any) => r.type === "Bounty",
+  );
+  assert.ok(bounty);
+  const login = await request("/questions/login", {
+    code: room.code,
+    key: "test-control-credential",
+  });
+  assert.equal(login.body.batches[0].recommendations.length, 3);
+  assert.equal(login.body.batches[0].origin, "profiles");
+  assert.deepEqual(login.body.conversation, {
+    status: "not_connected",
+    segments: [],
+  });
+  const before = getSession(db, room.id)!.version;
+  await request("/questions/session", undefined, login.cookie);
+  assert.equal(getSession(db, room.id)!.version, before);
+  assert.equal(
+    (
+      await request(
+        control + "/assign",
+        { recommendationId: bounty.id },
+        "",
+        true,
+      )
+    ).status,
+    200,
+  );
+  const feed = await request("/questions/session", undefined, login.cookie);
+  assert.equal(feed.body.batches[0].recommendations.length, 3);
+  assert.equal(feed.body.activeQuestion.recommendation.id, bounty.id);
+  assert.equal(feed.body.activeQuestion.recommendation.secret, bounty.secret);
+  assert.ok(
+    !JSON.stringify(feed.body).includes("Never expose this imported bio"),
+  );
+  assert.equal(feed.body.players[0].interests, undefined);
+  assert.equal(
+    (await request("/session", undefined, cookies[0])).body.suggestionBatches,
+    undefined,
+  );
+  const reopened = openDb(file);
+  assert.deepEqual(
+    questionsSnapshot(getSession(reopened, room.id)!),
+    feed.body,
+  );
+  reopened.close();
+  await request(control + "/clear", { status: "completed" }, "", true);
+  await request(control + "/recommendations", {}, "", true);
+  const next = await request("/questions/session", undefined, login.cookie);
+  assert.equal(next.body.batches.length, 2);
+  assert.equal(next.body.activeQuestion, null);
+  assert.equal(next.body.history[0].status, "completed");
 });

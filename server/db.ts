@@ -2,7 +2,13 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Player, Source, Recommendation, Round } from "../shared/types";
+import type {
+  Player,
+  Source,
+  Recommendation,
+  Round,
+  SuggestionBatch,
+} from "../shared/types";
 export type Session = {
   id: string;
   code: string;
@@ -11,6 +17,7 @@ export type Session = {
   status: "lobby" | "active" | "finished";
   players: Player[];
   recommendations: Recommendation[];
+  suggestionBatches?: SuggestionBatch[];
   rounds: Round[];
   context: string;
   sources: Record<string, Source[]>;
@@ -27,6 +34,8 @@ export function openDb(
  CREATE TABLE IF NOT EXISTS credentials(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,player_id TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS connections(player_id TEXT PRIMARY KEY,session_id TEXT NOT NULL,encrypted_token TEXT NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS oauth(state TEXT PRIMARY KEY,player_id TEXT NOT NULL,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS questions_invites(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS questions_access(token TEXT PRIMARY KEY,session_id TEXT NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,type TEXT NOT NULL,created_at INTEGER NOT NULL,body TEXT NOT NULL);`);
   return db;
 }

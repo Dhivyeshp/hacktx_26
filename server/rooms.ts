@@ -4,6 +4,7 @@ import type {
   ControlSnapshot,
   CapsuleSnapshot,
   Snapshot,
+  QuestionsSnapshot,
 } from "../shared/types";
 import { save, event, type DB, type Session } from "./db";
 import { instagramReady } from "./instagram";
@@ -87,5 +88,34 @@ export function controlSnapshot(s: Session): ControlSnapshot {
     activeQuestion: activeQuestion(s),
     aiReady: !!process.env.MODEL_API_KEY,
     notice: s.notice,
+  };
+}
+
+export function questionsSnapshot(
+  s: Session,
+  preparing = false,
+): QuestionsSnapshot {
+  const batches = s.suggestionBatches?.length
+    ? s.suggestionBatches
+    : s.recommendations.length
+      ? [
+          {
+            id: "current-options",
+            createdAt: null,
+            origin: "profiles" as const,
+            recommendations: s.recommendations,
+          },
+        ]
+      : [];
+  return {
+    schemaVersion: 1,
+    room: roomInfo(s),
+    players: s.players.map(({ id, name }) => ({ id, name })),
+    batches,
+    activeQuestion: s.status === "finished" ? null : activeQuestion(s),
+    history: s.rounds,
+    preparing,
+    notice: s.notice,
+    conversation: { status: "not_connected", segments: [] },
   };
 }

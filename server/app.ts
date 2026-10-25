@@ -22,7 +22,9 @@ import {
   controlSnapshot,
   capsuleSnapshot,
   activeQuestion,
+  questionsSnapshot,
 } from "./rooms";
+import { questionsAccess } from "./questions-access";
 import type { RoomEvent, Source } from "../shared/types";
 const cookie = "centerpiece";
 const text = z.string().trim().min(1).max(60);
@@ -30,6 +32,7 @@ export function createApp(db = openDb()) {
   db.prepare("DELETE FROM connections WHERE expires_at<?").run(Date.now());
   db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
   const app = express();
+  const generating = new Set<string>();
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "100kb" }));
   app.use(cookieParser());
@@ -199,7 +202,7 @@ export function createApp(db = openDb()) {
     }),
   );
   app.get(
-    "/api/capsule",
+    ["/api/capsule", "/api/relic"],
     wrap((req, res) => {
       const { s, me } = auth(req);
       res.json(capsuleSnapshot(s, me));
@@ -295,11 +298,9 @@ export function createApp(db = openDb()) {
           (source) => source.kind !== "manual",
         );
         if (JSON.stringify(latestSources) !== JSON.stringify(sources))
-          return res
-            .status(409)
-            .json({
-              error: "Your imported profile changed. Please try again.",
-            });
+          return res.status(409).json({
+            error: "Your imported profile changed. Please try again.",
+          });
         const player = current.players.find((p) => p.id === me);
         if (!player)
           return res.status(409).json({ error: "Your profile was removed." });
@@ -409,6 +410,130 @@ export function createApp(db = openDb()) {
       }
     }),
   );
+  const questionsCookie = "destina_questions";
+  function allowQuestions(res: Response, sessionId: string) {
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
+    db.prepare("DELETE FROM questions_access WHERE expires_at<?").run(
+      Date.now(),
+    );
+    db.prepare("INSERT INTO questions_access VALUES(?,?,?)").run(
+      tokenHash(token),
+      sessionId,
+      expiresAt,
+    );
+    res.cookie(questionsCookie, token, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: secure(),
+      path: "/api/questions",
+      maxAge: 12 * 60 * 60 * 1000,
+    });
+  }
+  function questionsRoom(req: Request) {
+    const token = req.cookies[questionsCookie];
+    const record =
+      typeof token === "string"
+        ? (db
+            .prepare(
+              "SELECT session_id FROM questions_access WHERE token=? AND expires_at>?",
+            )
+            .get(tokenHash(token), Date.now()) as
+            { session_id: string } | undefined)
+        : undefined;
+    const s = record && getSession(db, record.session_id);
+    if (!s)
+      throw Object.assign(new Error("Private Game Master access required."), {
+        status: 401,
+      });
+    return s;
+  }
+  app.post(
+    "/api/questions/access",
+    wrap((req, res) => {
+      const { token } = z
+        .object({ token: z.string().length(64) })
+        .parse(req.body);
+      const record = db
+        .prepare(
+          "DELETE FROM questions_invites WHERE token=? AND expires_at>? RETURNING session_id",
+        )
+        .get(tokenHash(token), Date.now()) as
+        { session_id: string } | undefined;
+      const s = record && getSession(db, record.session_id);
+      if (!s)
+        return res
+          .status(401)
+          .json({
+            error:
+              "This access link expired or was already used. Request a new link.",
+          });
+      allowQuestions(res, s.id);
+      res.json(questionsSnapshot(s, generating.has(s.id)));
+    }),
+  );
+  app.post(
+    "/api/questions/login",
+    wrap((req, res) => {
+      const { key, code } = z
+        .object({ key: z.string().min(1).max(512), code: z.string().length(6) })
+        .parse(req.body);
+      const expected = process.env.GM_API_KEY;
+      if (
+        !expected ||
+        !timingSafeEqual(
+          Buffer.from(tokenHash(key), "hex"),
+          Buffer.from(tokenHash(expected), "hex"),
+        )
+      )
+        return res
+          .status(403)
+          .json({
+            error:
+              "The room code or access key could not be verified. You can also use a private access link.",
+          });
+      const s = getSession(db, code.toUpperCase());
+      if (!s)
+        return res
+          .status(403)
+          .json({
+            error: "The room code or access key could not be verified.",
+          });
+      allowQuestions(res, s.id);
+      res.json(questionsSnapshot(s, generating.has(s.id)));
+    }),
+  );
+  app.get(
+    "/api/questions/session",
+    wrap((req, res) => {
+      const s = questionsRoom(req);
+      if (req.query.room && String(req.query.room).toUpperCase() !== s.code)
+        return res
+          .status(403)
+          .json({
+            error:
+              "Your access is for another room. Open its private link or sign in again.",
+          });
+      res.json(questionsSnapshot(s, generating.has(s.id)));
+    }),
+  );
+  app.delete(
+    "/api/questions/session",
+    wrap((req, res) => {
+      const token = req.cookies[questionsCookie];
+      if (typeof token === "string")
+        db.prepare("DELETE FROM questions_access WHERE token=?").run(
+          tokenHash(token),
+        );
+      res.clearCookie(questionsCookie, {
+        path: "/api/questions",
+        httpOnly: true,
+        sameSite: "strict",
+        secure: secure(),
+      });
+      res.status(204).end();
+    }),
+  );
   // The Vision Pro transport will call these operations later. Player cookies grant no control access.
   app.use("/api/control", (req, res, next) => {
     const expected = process.env.GM_API_KEY;
@@ -438,14 +563,22 @@ export function createApp(db = openDb()) {
         ...controlSnapshot(s),
         joinPath: `/join/${s.code}`,
         capsulePath: "/c",
+        relicPath: "/relic",
+        questionsPath: `/questions?room=${s.code}`,
       });
+    }),
+  );
+  app.post(
+    "/api/control/rooms/:code/questions-access",
+    wrap((req, res) => {
+      res.json(questionsAccess(db, room(req)));
     }),
   );
   app.get(
     "/api/control/rooms/:code",
     wrap((req, res) => res.json(controlSnapshot(room(req)))),
   );
-  const generating = new Set<string>();
+
   app.post(
     "/api/control/rooms/:code/recommendations",
     wrap(async (req, res) => {
@@ -491,6 +624,13 @@ export function createApp(db = openDb()) {
             error: "The room changed. Request fresh recommendations.",
           });
         Object.assign(current, result);
+        current.suggestionBatches ??= [];
+        current.suggestionBatches.push({
+          id: randomUUID(),
+          createdAt: Date.now(),
+          origin: "profiles",
+          recommendations: structuredClone(result.recommendations),
+        });
         touch(current, "recommendations.ready");
         res.json(controlSnapshot(current));
       } finally {

@@ -84,3 +84,31 @@ export type RoomEvent = {
   roomVersion: number;
   at: number;
 };
+
+/** Private feed records. Never included in player session snapshots. */
+export type SuggestionBatch = {
+  id: string;
+  createdAt: number | null;
+  origin: "profiles" | "conversation";
+  recommendations: Recommendation[];
+};
+export type TranscriptSegment = {
+  id: string;
+  speakerId?: string;
+  text: string;
+  at: number;
+};
+export type QuestionsSnapshot = {
+  schemaVersion: 1;
+  room: RoomInfo;
+  players: { id: string; name: string }[];
+  batches: SuggestionBatch[];
+  activeQuestion: Round | null;
+  history: Round[];
+  preparing: boolean;
+  notice?: string;
+  conversation: {
+    status: "not_connected" | "live" | "paused";
+    segments: TranscriptSegment[];
+  };
+};
