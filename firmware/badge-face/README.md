@@ -50,8 +50,10 @@ Each command waits up to `timeout_ms` (default 3000) for a tag, then replies wit
 ```
 
 - **What a write does:** it replaces the tag's NDEF message with a single URL or text record, then reads it back to verify. Phones open the URL on a background tap.
+- **One tag at a time:** if several tags answer at once, nothing is read or written, and the reply is `"error":"more than one tag in range, hold just one"`. Once a tag is selected, only that tag responds, so a write never lands on two tags. Stacked tags also detune each other and sit beyond the short range, so program capsules one by one.
+- **Targeting:** add `"uid":"042B3C6D5F6180"` to act only if that exact tag is in range. Otherwise the reply is `"wrong tag in range"`.
 - **Supported tags:** MIFARE Classic cards and phones are detected but not written.
-- **Testing:** `python relay/clients/pi/screen_test.py nfc read` and `... nfc write <url>`.
+- **Testing:** `python relay/clients/pi/screen_test.py nfc read` and `... nfc write <url>`. `... nfc program "https://example.com/c?t=" 1 9` walks through tags 01 to 09 one at a time and skips any tag it has already written.
 
 ## Build and flash
 

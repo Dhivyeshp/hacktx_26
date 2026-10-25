@@ -8,6 +8,7 @@
     python screen_test.py noqr
     python screen_test.py nfc read             # hold a tag on the badge's flower pattern
     python screen_test.py nfc write https://example.com/c?t=07
+    python screen_test.py nfc program "https://example.com/c?t=" 1 9   # one tag at a time
 
 The port is auto-detected (/dev/ttyACM* on the Pi, /dev/cu.usbmodem* on a Mac);
 override it with --port or ESP32_PORT. Every reply line from the badge is printed.
@@ -33,6 +34,8 @@ HELP = """commands:
   noqr                   back to the face
   nfc read               read the tag held to the badge
   nfc write <url|text>   write an NDEF URL (or text) to it
+  nfc program <base> <first> <last>
+                         write <base>01, <base>02, ... to a series of tags
   demo                   cycle through everything
   {...}                  send raw JSON
   quit"""
@@ -59,6 +62,7 @@ def open_badge(port):
 
 ready = threading.Event()
 nfc_done = threading.Event()
+nfc_reply = {}
 
 
 def print_replies(badge):
@@ -69,6 +73,8 @@ def print_replies(badge):
             if "screen_ready" in text:
                 ready.set()
             if text.startswith('{"nfc"'):
+                nfc_reply.clear()
+                nfc_reply.update(json.loads(text))
                 nfc_done.set()
             print("  badge:", text)
 
@@ -79,19 +85,55 @@ def send(badge, **fields):
     print("  sent: ", json.dumps(msg))
 
 
+def nfc_request(badge, msg):
+    nfc_done.clear()
+    badge.write((json.dumps(msg) + "\n").encode())
+    print("  sent: ", json.dumps(msg), "(hold the tag on the flower pattern)")
+    nfc_done.wait(timeout=(msg.get("timeout_ms", 3000) / 1000) + 3)
+    return dict(nfc_reply) if nfc_done.is_set() else {"ok": False, "error": "badge didn't answer"}
+
+
+def nfc_program(badge, base, first, last):
+    """Write base+NN to tags one at a time, refusing a tag that's already done."""
+    done = {}
+    n = first
+    while n <= last:
+        url = f"{base}{n:02d}"
+        if input(f"\nPut tag {n} (alone) on the flower, then Enter (q to stop): ").strip() == "q":
+            break
+        found = nfc_request(badge, {"type": "nfc_read"})
+        uid = found.get("uid")
+        if not found.get("ok"):
+            print("  !", found.get("error"))
+            continue
+        if uid in done:
+            print(f"  ! that's the tag already written with {done[uid]}; swap it for a new one")
+            continue
+        wrote = nfc_request(badge, {"type": "nfc_write", "uid": uid, "url": url})
+        if wrote.get("ok") and wrote.get("verified"):
+            done[uid] = url
+            print(f"  wrote {url} to {uid}")
+            n += 1
+        else:
+            print("  ! write failed:", wrote.get("error"), "- try again")
+    print("\nprogrammed:")
+    for uid, url in done.items():
+        print(f"  {uid}  {url}")
+
+
 def nfc(badge, args):
+    if args[:1] == ["program"] and len(args) == 4:
+        nfc_program(badge, args[1], int(args[2]), int(args[3]))
+        return
     if args[:1] == ["read"]:
         msg = {"type": "nfc_read"}
     elif args[:1] == ["write"] and len(args) > 1:
         value = " ".join(args[1:])
         msg = {"type": "nfc_write", "url" if "://" in value else "text": value}
     else:
-        print("usage: nfc read | nfc write <url|text>")
+        print("usage: nfc read | nfc write <url|text> | nfc program <base> <first> <last>")
         return
-    nfc_done.clear()
-    badge.write((json.dumps(msg) + "\n").encode())
-    print("  sent: ", json.dumps(msg), "(hold the tag on the flower pattern)")
-    nfc_done.wait(timeout=6)
+    nfc_request(badge, msg)
 
 
 def demo(badge):
