@@ -2155,22 +2155,10 @@ label small,
   }
 }
 
-/* In light appearance, the interests panel becomes an ink surface. */
-:root[data-theme="light"] .profile-grid .interest-panel {
-  color-scheme: dark;
-  --ink: #eeeae0;
-  --ink-muted: #b9b6ab;
-  --cream: #262722;
-  --cream-2: #35362e;
-  --line-light: #55564b;
-  --line: #55564b;
-  --muted: #b9b6ab;
-  --text: #eeeae0;
-  --text-muted: #b9b6ab;
-  --focus: #c49a63;
-  color: var(--ink);
-  background: var(--cream);
-  border-color: var(--line-light);
+/* Both profile cards share the same paper surface in light appearance. */
+:root[data-theme="light"] .profile-grid .interest-panel,
+:root[data-theme="light"] .interest-panel .profile-action {
+  background: var(--bg-raised);
 }
 .gm-roster {
   margin-bottom: 44px;
