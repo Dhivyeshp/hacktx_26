@@ -6,7 +6,6 @@ import SwiftUI
 struct PromptWorkbenchView: View {
     @Bindable var client: DestinaClient
     @Bindable var store: GameMasterStore
-    let minimumPlayers: Int
     var onAssigned: (Round) -> Void
 
     private var feed: GameMasterFeed? { client.feed }
@@ -82,25 +81,25 @@ struct PromptWorkbenchView: View {
                 generateButton(
                     "Get three Muse prompts",
                     origin: "profiles",
-                    blocked: store.generationBlockReason(feed: feed, minimumPlayers: minimumPlayers),
+                    blocked: store.generationBlockReason(feed: feed),
                     primary: true
                 )
                 generateButton(
                     "From the conversation",
                     origin: "conversation",
-                    blocked: store.conversationBlockReason(feed: feed, minimumPlayers: minimumPlayers)
+                    blocked: store.conversationBlockReason(feed: feed)
                 )
                 generateButton(
                     "Use the question library",
                     origin: "library",
-                    blocked: store.libraryBlockReason(feed: feed, minimumPlayers: minimumPlayers)
+                    blocked: store.libraryBlockReason(feed: feed)
                 )
             }
-            if let reason = store.libraryBlockReason(feed: feed, minimumPlayers: minimumPlayers) {
+            if let reason = store.libraryBlockReason(feed: feed) {
                 Text(reason)
                     .font(Destina.ui(11))
                     .foregroundStyle(Destina.textMuted)
-            } else if store.generationBlockReason(feed: feed, minimumPlayers: minimumPlayers) != nil {
+            } else if store.generationBlockReason(feed: feed) != nil {
                 Text("The question library stays free when the Muse allowance is used up.")
                     .font(Destina.ui(11))
                     .foregroundStyle(Destina.textMuted)
@@ -108,9 +107,10 @@ struct PromptWorkbenchView: View {
         }
     }
 
+    @ViewBuilder
     private func generateButton(_ title: String, origin: String, blocked: String?,
                                 primary: Bool = false) -> some View {
-        Button {
+        let action: () -> Void = {
             Task {
                 await client.generate(
                     origin: origin,
@@ -118,13 +118,14 @@ struct PromptWorkbenchView: View {
                     context: store.context
                 )
             }
-        } label: {
-            HStack(spacing: 8) {
-                if client.isBusy("generate") && !primary { EmptyView() }
-                Text(title)
+        }
+        Group {
+            if primary {
+                Button(title, action: action).buttonStyle(.destinaPrimary)
+            } else {
+                Button(title, action: action).buttonStyle(.destinaSecondary)
             }
         }
-        .buttonStyle(primary ? AnyButtonStyle(.destinaPrimary) : AnyButtonStyle(.destinaSecondary))
         .disabled(blocked != nil || client.isBusy("generate"))
         .accessibilityHint(blocked ?? "")
     }
@@ -190,12 +191,3 @@ struct PromptWorkbenchView: View {
     }
 }
 
-/// Lets the two button styles share one call site without erasing their types
-/// at every use.
-struct AnyButtonStyle: ButtonStyle {
-    private let make: (Configuration) -> AnyView
-    init<S: ButtonStyle>(_ style: S) {
-        make = { AnyView(style.makeBody(configuration: $0)) }
-    }
-    func makeBody(configuration: Configuration) -> some View { make(configuration) }
-}

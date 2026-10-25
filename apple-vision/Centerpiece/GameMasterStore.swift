@@ -52,7 +52,9 @@ final class GameMasterStore {
         if let active = feed.activeQuestion {
             return deliveredRoundID == active.id ? .reviewing : .driving
         }
-        return feed.room.readyCount >= 2 ? .choosing : .waiting
+        // Any loaded room can be worked on. How many people a round needs is
+        // the server's rule, and the workbench explains anything missing.
+        return .choosing
     }
 
     func noteDelivered(_ round: Round?) {
@@ -68,17 +70,18 @@ final class GameMasterStore {
 
     // MARK: - Generation gates
     //
-    // Ported from the browser workbench. These are the server's rules; a
-    // headset that guessed differently would offer a button that 409s.
+    // Only conditions the feed actually reports. How many players a round
+    // needs is the server's rule and depends on its DEMO_MODE, which the feed
+    // does not carry, so the headset must not guess at it: a wrong guess
+    // disables the buttons on a room the server would have accepted. Too few
+    // players comes back as a 409 and is shown as the server worded it.
 
-    func generationBlockReason(feed: GameMasterFeed?, minimumPlayers: Int) -> String? {
+    func generationBlockReason(feed: GameMasterFeed?) -> String? {
         guard let feed else { return "Waiting for your room." }
         if !feed.canControl { return "This view cannot change the room." }
         if feed.activeQuestion != nil { return "Clear the prompt on the table first." }
         if feed.preparing { return "Prompts are being prepared." }
-        if feed.room.playerCount < minimumPlayers {
-            return "At least \(minimumPlayers) people need to join."
-        }
+        if feed.room.playerCount == 0 { return "No one has joined yet." }
         if feed.room.readyCount < feed.room.playerCount {
             return "Everyone needs at least one saved interest."
         }
@@ -90,14 +93,12 @@ final class GameMasterStore {
 
     /// The library costs no Muse request, so it stays available after the paid
     /// allowance runs out.
-    func libraryBlockReason(feed: GameMasterFeed?, minimumPlayers: Int) -> String? {
+    func libraryBlockReason(feed: GameMasterFeed?) -> String? {
         guard let feed else { return "Waiting for your room." }
         if !feed.canControl { return "This view cannot change the room." }
         if feed.activeQuestion != nil { return "Clear the prompt on the table first." }
         if feed.preparing { return "Prompts are being prepared." }
-        if feed.room.playerCount < minimumPlayers {
-            return "At least \(minimumPlayers) people need to join."
-        }
+        if feed.room.playerCount == 0 { return "No one has joined yet." }
         if feed.room.readyCount < feed.room.playerCount {
             return "Everyone needs at least one saved interest."
         }
@@ -105,8 +106,8 @@ final class GameMasterStore {
     }
 
     /// Conversation prompts need enough new speech for the server to accept them.
-    func conversationBlockReason(feed: GameMasterFeed?, minimumPlayers: Int) -> String? {
-        if let reason = generationBlockReason(feed: feed, minimumPlayers: minimumPlayers) { return reason }
+    func conversationBlockReason(feed: GameMasterFeed?) -> String? {
+        if let reason = generationBlockReason(feed: feed) { return reason }
         guard let feed, !feed.conversation.segments.isEmpty else {
             return "No conversation has been recorded yet."
         }

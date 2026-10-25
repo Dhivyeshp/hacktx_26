@@ -6,10 +6,6 @@ import SwiftUI
 /// workspace rather than at one rectangle: the camera straight ahead, the
 /// roster and the conversation angled in from the sides, and a stage below
 /// that changes with what the Game Master is doing.
-enum GameMasterHUD {
-    static let minimumPlayers = 3
-}
-
 /// Shared references, so each panel takes one parameter instead of four.
 @MainActor
 struct GameMasterContext {
@@ -258,7 +254,6 @@ struct StagePanel: View {
                 PromptWorkbenchView(
                     client: client,
                     store: store,
-                    minimumPlayers: GameMasterHUD.minimumPlayers,
                     onAssigned: { _ in announceAssignment() }
                 )
             case .driving:
