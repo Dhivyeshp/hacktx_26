@@ -22,12 +22,21 @@ struct RelayClientChecks {
     }
     @MainActor static func main() async throws {
         let arguments = CommandLine.arguments
+        let token = arguments.count > 3 ? arguments[3] : "fixture-token"
+        // Exercise the same bundle loader used at launch, including an empty token.
+        let bundleURL = FileManager.default.temporaryDirectory.appendingPathComponent("RelayChecks-\(UUID()).bundle")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        let values = ["url": arguments[1], "token": token, "room": "table"]
+        try PropertyListSerialization.data(fromPropertyList: values, format: .xml, options: 0)
+            .write(to: bundleURL.appendingPathComponent("RelayConfig.plist"))
+        let config = RelayConfiguration.bundled(bundle: Bundle(url: bundleURL)!)!
+        precondition(config.url.absoluteString == arguments[1] && config.token == token)
         try jpeg().write(to: URL(fileURLWithPath: arguments[2]))
         precondition(RelayClient.decodeJPEG(Data([0xff, 0xd8, 0xff])) == nil)
         precondition(RelayClient.decodeJPEG(jpeg()) != nil)
-        let config = RelayConfiguration(url: URL(string: arguments[1])!, token: "fixture-token", room: "table")
         let request = config.request()
-        precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token")
+        precondition(request.value(forHTTPHeaderField: "Authorization") == (token.isEmpty ? nil : "Bearer \(token)"))
         precondition(!request.url!.absoluteString.contains("fixture-token"))
         let client = RelayClient(configuration: config)
         client.connect(); client.connect()
@@ -58,6 +67,6 @@ struct RelayClientChecks {
         precondition(!client.isConnected && !client.hasFreshFrame && client.latestFrame == nil)
         precondition(client.framesReceived == count && client.status == "Disconnected")
         precondition(client.controlBlockReason == "relay not connected")
-        print("PASS: bearer auth, named control gates, room subscription, welcome, binary JPEG decode, malformed frame rejection, stale detection, reconnect, explicit disconnect")
+        print("PASS: bundled configuration, optional auth, named control gates, room subscription, welcome, binary JPEG decode, malformed frame rejection, stale detection, reconnect, explicit disconnect")
     }
 }

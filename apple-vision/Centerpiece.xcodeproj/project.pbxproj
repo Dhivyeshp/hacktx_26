@@ -195,6 +195,7 @@
 				DEVELOPMENT_TEAM = 65WRU5S3K4;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Centerpiece/Info.plist;
 				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "Use thumb-to-middle-finger pinches to drive the robot left, right, and forward.";
 				INFOPLIST_KEY_CFBundleDisplayName = Centerpiece;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -218,6 +219,7 @@
 				DEVELOPMENT_TEAM = 65WRU5S3K4;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Centerpiece/Info.plist;
 				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "Use thumb-to-middle-finger pinches to drive the robot left, right, and forward.";
 				INFOPLIST_KEY_CFBundleDisplayName = Centerpiece;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

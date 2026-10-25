@@ -7,12 +7,13 @@ struct RelayConfiguration {
     let token: String
     let room: String
 
-    static func bundled() -> RelayConfiguration? {
-        guard let path = Bundle.main.url(forResource: "RelayConfig", withExtension: "plist"),
+    static func bundled(bundle: Bundle = .main) -> RelayConfiguration? {
+        guard let path = bundle.url(forResource: "RelayConfig", withExtension: "plist"),
               let data = try? Data(contentsOf: path),
               let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String],
-              let rawURL = values["url"], let url = URL(string: rawURL), url.scheme == "wss",
-              let token = values["token"], !token.isEmpty, token != "YOUR_RELAY_TOKEN" else { return nil }
+              let rawURL = values["url"], let url = URL(string: rawURL),
+              ["ws", "wss"].contains(url.scheme ?? ""), let host = url.host, !host.isEmpty,
+              let token = values["token"], token != "YOUR_RELAY_TOKEN" else { return nil }
         return RelayConfiguration(url: url, token: token, room: values["room"] ?? "table")
     }
 
@@ -21,7 +22,9 @@ struct RelayConfiguration {
         components.queryItems = [URLQueryItem(name: "role", value: "visionpro"),
                                  URLQueryItem(name: "room", value: room), URLQueryItem(name: "video", value: "1")]
         var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.timeoutInterval = 20
         return request
     }
@@ -147,7 +150,7 @@ final class RelayClient {
         settings.urlCache = nil
         settings.httpCookieStorage = nil
         networking = URLSession(configuration: settings)
-        if configuration == nil { status = "Add RELAY_TOKEN to .env and rebuild" }
+        if configuration == nil { status = "Check relay configuration and rebuild" }
     }
 
     var room: String { configuration?.room ?? "table" }
@@ -250,7 +253,7 @@ final class RelayClient {
         } else { oldSocket?.cancel(with: .goingAway, reason: nil) }
         isConnected = false; hasFreshFrame = false
         lastFrameAt = nil; latestFrame = nil; peers = []
-        status = isConfigured ? "Disconnected" : "Add RELAY_TOKEN to .env and rebuild"
+        status = isConfigured ? "Disconnected" : "Check relay configuration and rebuild"
     }
 
     func reconnect() { disconnect(reason: "manual reconnect"); connect() }

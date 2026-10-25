@@ -324,10 +324,12 @@ struct DashboardView: View {
             Toggle("Live relay video", isOn: $experience.useLiveVideo)
             Text(useLiveVideo ? relay.status : "Showing an illustrative photo, not live video.").font(.subheadline)
             if !relay.isConfigured {
-                Text("Add RELAY_TOKEN to apple-vision/.env, then rebuild and run from Xcode.")
+                Text("Check RELAY_URL in apple-vision/.env, then rebuild and run from Xcode.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if useLiveVideo {
+                Text("Join the same iPhone hotspot as the relay and allow local-network access.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Room: \(relay.room) · JPEG frames: \(relay.framesReceived)").font(.caption.monospacedDigit())
                 Text("Peers: \(relay.peers.isEmpty ? "none" : relay.peers.joined(separator: ", "))").font(.caption)
                 Text("Wheel control: \(relay.controlBlockReason ?? "ready")").font(.caption)

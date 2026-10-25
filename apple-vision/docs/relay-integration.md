@@ -1,10 +1,11 @@
 # Video and wheel relay contract and verification
 
-Source of truth: sibling `relay/src/server.ts`, `relay/clients/visionpro/RelayClient.swift`, and `docs/ws-protocol.md` in the original hacktx_26 checkout. The client follows that existing contract; no new game/control message format is introduced.
+Source of truth: sibling `relay/src/server.ts`, `relay/clients/visionpro/RelayClient.swift`, and `docs/ws-protocol.md` in this checkout. The client follows that existing contract; no new game/control message format is introduced.
 
-- Endpoint: `wss://centerpiece-relay.onrender.com/ws`.
+- Default endpoint: `ws://172.20.10.9:8080/ws` on the shared iPhone hotspot. Override with `RELAY_URL` in `apple-vision/.env`; both `ws://` and `wss://` are accepted.
 - Query: `role=visionpro&room=table&video=1` (room configurable in .env).
-- Authentication: `Authorization: Bearer <RELAY_TOKEN>`. The server accepts this instead of a token query parameter.
+- Authentication: no header when `RELAY_TOKEN` is empty (the local default). When configured, send `Authorization: Bearer <RELAY_TOKEN>`; the server accepts this instead of a token query parameter.
+- The target merges `Centerpiece/Info.plist` into its generated Info.plist, enabling local networking and providing the local-network permission description for Debug and Release.
 - Text: `welcome` confirms connection; `presence` supplies `peers: [{role,id}]`. Other incoming messages remain unused by this client.
 - Binary: one complete JPEG per WebSocket message, max 4 MiB. Malformed frames are rejected. Decode is off the main actor; only the latest decoded frame is retained. Images larger than 4096 pixels on either dimension are rejected and display decoding is bounded to 1920 pixels.
 - Missing frames for three seconds mark the video stale and disable driving/drop. Old frames are visibly dimmed. No automatic switch to a demo photo when a live connection fails.
@@ -20,11 +21,21 @@ Compile and run on macOS with Xcode selected:
 ```sh
 xcrun swiftc -parse-as-library Centerpiece/RelayClient.swift Tests/RelayClientChecks.swift -o /tmp/centerpiece-relay-checks
 python3 Tests/relay_fixture.py /tmp/centerpiece-relay-checks
+python3 Tests/relay_fixture.py /tmp/centerpiece-relay-checks --no-token
+python3 -B Tests/relay_config_checks.py
 ```
 
-Local fixture success is not proof of deployed relay authentication or Pi video availability. Verify on the real headset with the configured token and a Pi publishing to the same room before relying on live video.
+Local fixture success is not proof of deployed relay authentication or Pi video availability. Join the shared hotspot, allow local-network access on the headset, and check `http://172.20.10.9:8080/healthz` for `rooms.table` containing `pi` and `visionpro`. If the headset joins but waits for video, inspect the Pi stream and the received JPEG count in Camera settings.
 
-## Validation performed
+## Hotspot switch validation
+
+- visionOS Simulator Debug build succeeded with Xcode 26.3.
+- Inspected the built app: the default URL is `ws://172.20.10.9:8080/ws`, room is `table`, token is empty, and both local-network Info.plist keys and the existing hand-tracking description are present.
+- The real Swift client passed the localhost WebSocket fixture with no token and with bearer authentication, including bundle loading, JPEG decode, stale detection, reconnect, wheel commands, and final stop on disconnect.
+- Four build-configuration checks passed for missing `.env`, the checked-in example, a secure endpoint override, and invalid URLs.
+- The physical headset permission prompt, hotspot connectivity, `/healthz` presence, and live Pi video remain unverified.
+
+## Earlier validation (before the hotspot switch)
 
 - visionOS Simulator Debug build succeeded.
 - The built app launched in visionOS Simulator; the compact selection layout was visually checked. Screenshot: `docs/ui-preview.png` (demo photo mode).

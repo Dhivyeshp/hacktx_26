@@ -16,15 +16,17 @@ The app starts in **full immersion**: passthrough and other apps are hidden. A l
 - A system dismissal also restores the launcher and stops/disarms motion. It does not automatically reopen until you request it.
 - Camera settings and the shared-page preview open as panels inside the immersive dashboard.
 
-## Add the relay token
+## Connect to the hotspot relay
 
-1. In this `apple-vision` directory, edit `.env`. If it is missing, copy `.env.example` to `.env`.
-2. Set `RELAY_TOKEN` to the value from Render → centerpiece-relay → Environment. Do not put it in Swift source or chat.
-3. Leave `RELAY_URL=wss://centerpiece-relay.onrender.com/ws` and `RELAY_ROOM=table` unless your relay uses a different endpoint/room.
-4. Build and run again. Every build reads `.env` into the development app's generated `RelayConfig.plist`; `.env` itself is not copied into the bundle and is ignored by Git. Changing `.env` requires rebuilding/reinstalling.
-5. With a token configured, the app automatically connects and waits for binary JPEGs from the Pi in the same room. Camera settings (top right) let you reconnect or switch to the demo photo.
+1. Join the Vision Pro to the same iPhone hotspot as the relay laptop and Pi.
+2. Build and run from Xcode. With no `apple-vision/.env`, the app defaults to `ws://172.20.10.9:8080/ws`, room `table`, and an empty token. Live video is selected automatically.
+3. Tap **Allow** when visionOS asks for local-network access. The target includes `NSAppTransportSecurity → NSAllowsLocalNetworking = YES` and `NSLocalNetworkUsageDescription`.
+4. Check `http://172.20.10.9:8080/healthz`: `rooms.table` should include `pi` and `visionpro`. The camera feed appears in the existing immersive dashboard.
+5. If `visionpro` joins but the view stays on **Connected · waiting for Pi video**, check that the Pi is streaming binary JPEGs to the same relay and room. Camera settings shows peers and the received JPEG count, and offers **Reconnect**.
 
-The development app contains the token in its generated configuration so it can authenticate on the headset. Treat the built app as a credential-bearing artifact. Do not distribute it publicly with a shared relay token; use scoped short-lived credentials for distribution. The build script never sources `.env` as shell code or prints its values.
+To change the relay IP, copy `.env.example` to `.env` in this directory and edit `RELAY_URL`. An existing `.env` overrides the defaults: replace an old Render URL with `ws://172.20.10.9:8080/ws` and leave `RELAY_TOKEN=` empty for this unauthenticated local relay. Rebuild/reinstall after editing. Both `ws://` and `wss://` endpoints are supported; set `RELAY_TOKEN` only when the server requires authentication.
+
+Every build writes only the relay settings to `RelayConfig.plist`. The `.env` file stays outside the bundle and is ignored by Git. If a token is configured, it is included in the built app and sent as a bearer header. Camera settings lets you explicitly switch to the demo photo.
 
 ## Live and mocked features
 
@@ -91,9 +93,11 @@ xcrun swiftc -parse-as-library Centerpiece/DemoSession.swift Centerpiece/HandMot
 /tmp/centerpiece-hand-checks
 xcrun swiftc -parse-as-library Centerpiece/RelayClient.swift Tests/RelayClientChecks.swift -o /tmp/centerpiece-relay-checks
 python3 Tests/relay_fixture.py /tmp/centerpiece-relay-checks
+python3 Tests/relay_fixture.py /tmp/centerpiece-relay-checks --no-token
+python3 -B Tests/relay_config_checks.py
 ```
 
-The WebSocket fixture checks the real Swift client over localhost, including auth header/room, JPEG decoding, malformed frames, stale video, reconnect, and cancellation. It is not a test of Render credentials, Pi streaming, or headset performance.
+The WebSocket fixture checks the real Swift client over localhost, including tokenless and bearer-authenticated connections, bundled configuration/room, JPEG decoding, malformed frames, stale video, reconnect, and cancellation. It is not a test of hotspot connectivity, Pi streaming, or headset permissions/performance.
 
 [Actual simulator screenshot of the compact layout](docs/ui-preview.png)
 

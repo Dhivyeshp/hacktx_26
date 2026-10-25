@@ -9,7 +9,7 @@ final class ImmersiveExperience {
 
     let relay = RelayClient()
     let hands = HandMotionController()
-    var useLiveVideo = RelayConfiguration.bundled() != nil
+    var useLiveVideo = true
     var demoVideoAvailable = true
     var hasAttemptedLaunch = false
     var isOpening = false

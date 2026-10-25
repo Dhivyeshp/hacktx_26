@@ -29,10 +29,10 @@ def read_env(path):
 
 def write_config(source, destination):
     values = read_env(source)
-    url = values.get('RELAY_URL', 'wss://centerpiece-relay.onrender.com/ws')
+    url = values.get('RELAY_URL', 'ws://172.20.10.9:8080/ws')
     parsed = urlparse(url)
-    if parsed.scheme != 'wss' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError('RELAY_URL must be a wss:// URL without credentials, query parameters, or fragments')
+    if parsed.scheme not in ('ws', 'wss') or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError('RELAY_URL must be a ws:// or wss:// URL without credentials, query parameters, or fragments')
     config = {'url': url, 'room': values.get('RELAY_ROOM', 'table') or 'table',
               'token': values.get('RELAY_TOKEN', '').strip()}
     destination.parent.mkdir(parents=True, exist_ok=True)

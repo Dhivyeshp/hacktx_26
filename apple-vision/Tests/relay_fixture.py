@@ -66,7 +66,8 @@ class Handler(socketserver.BaseRequestHandler):
         headers = dict(line.split(': ', 1) for line in lines[1:] if ': ' in line)
         headers = {k.lower(): v for k, v in headers.items()}
         query = parse_qs(url.query)
-        if headers.get('authorization') != 'Bearer fixture-token' or query != {'role': ['visionpro'], 'room': ['table'], 'video': ['1']}:
+        expected_auth = f'Bearer {self.server.token}' if self.server.token else None
+        if headers.get('authorization') != expected_auth or query != {'role': ['visionpro'], 'room': ['table'], 'video': ['1']}:
             self.server.errors.append('Unexpected auth or subscription')
             self.request.sendall(b'HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
             return
@@ -116,12 +117,13 @@ if __name__ == '__main__':
     with tempfile.TemporaryDirectory(prefix='centerpiece-ws-') as directory:
         with Server(('127.0.0.1', 0), Handler) as server:
             server.connections = 0
+            server.token = '' if '--no-token' in sys.argv else 'fixture-token'
             server.errors = []
             server.commands = []
             server.jpeg = Path(directory) / 'frame.jpg'
             threading.Thread(target=server.serve_forever, daemon=True).start()
             try:
-                result = subprocess.run([sys.argv[1], f'ws://127.0.0.1:{server.server_address[1]}/ws', str(server.jpeg)], timeout=30)
+                result = subprocess.run([sys.argv[1], f'ws://127.0.0.1:{server.server_address[1]}/ws', str(server.jpeg), server.token], timeout=30)
                 assert not server.errors, server.errors
                 assert server.connections == 2, f'Expected two connections, got {server.connections}'
                 commands = server.commands
