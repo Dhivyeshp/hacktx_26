@@ -1,0 +1,10 @@
+.DS_Store
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+.env
+.env.*
+!.env.example
+RelayConfig.plist
+__pycache__/
