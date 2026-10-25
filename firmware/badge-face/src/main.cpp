@@ -13,7 +13,8 @@
 // Other command types are ignored. A plain (non-JSON) line is shown as the
 // caption, handy for testing from a terminal. Each handled command is acked
 // with {"screen_face":...,"screen_text":...,"screen_qr":...}.
-// The Start button cycles through the faces.
+// The Start button cycles through the faces. The A button shows the join QR
+// code (kJoinUrl) for 15 seconds.
 //
 // NFC: {"type":"nfc_read"} and {"type":"nfc_write","url":...}, see handleNfc().
 
@@ -31,6 +32,13 @@ static constexpr int PIN_LCD_CS = 2;
 static constexpr int PIN_LCD_DC = 0;
 static constexpr int PIN_LCD_RST = 4;
 static constexpr int PIN_BTN_START = 9;
+// A, B, Home, Down, Left, Right, Up and Aux1 sit on a 74HC165, A shifted out first.
+static constexpr int PIN_HC165_DATA = 7;
+static constexpr int PIN_HC165_LOAD = 20;
+static constexpr int PIN_HC165_CLK = 21;
+
+static const char* const kJoinUrl = "https://zoning-tacky-mastiff.ngrok-free.dev/join/0AEDDD";
+static constexpr uint32_t kJoinQrMs = 15000;
 
 class BadgeLcd : public lgfx::LGFX_Device {
   lgfx::Panel_ST7789 panel_;
@@ -124,6 +132,7 @@ static float layoutY = 98;  // eye line, eased between captioned and bare layout
 static String qrUrl;
 static bool qrShown = false;
 static bool qrDirty = false;  // the QR screen is static, so it is only redrawn on change
+static uint32_t qrHideAt = 0;  // when the A button's QR goes away; 0 = stays until told
 
 // Idle animation state.
 static uint32_t blinkStart = 0, nextBlink = 1500;
@@ -274,8 +283,10 @@ static void handleLine(char* line) {
   if (qr.is<const char*>() && *qr.as<const char*>()) {
     qrUrl = qr.as<const char*>();
     qrShown = qrDirty = true;
+    qrHideAt = 0;
   } else if (qr.is<bool>() && qr.as<bool>()) {
     qrShown = qrDirty = !qrUrl.isEmpty();
+    qrHideAt = 0;
   } else if (qr.is<bool>() || qr.is<const char*>()) {
     qrShown = false;
     blinkStart = reactAt = millis();
@@ -302,19 +313,44 @@ static void pollSerial() {
   }
 }
 
-static void pollButton() {
-  static bool wasDown = false;
-  static uint32_t changedAt = 0;
-  bool down = digitalRead(PIN_BTN_START) == LOW;
-  if (down != wasDown && millis() - changedAt > 30) {
-    wasDown = down;
-    changedAt = millis();
-    if (down) {
-      qrShown = false;
-      lastCommandAt = millis();
-      setFace((faceIndex + 1) % kFaceCount);
-      ack();
-    }
+// Returns the 74HC165 buttons as a bitmask, bit 0 = A. All are active-low.
+static uint8_t readShiftButtons() {
+  digitalWrite(PIN_HC165_LOAD, LOW);
+  delayMicroseconds(1);
+  digitalWrite(PIN_HC165_LOAD, HIGH);
+  delayMicroseconds(1);
+  uint8_t pressed = 0;
+  for (int i = 0; i < 8; i++) {
+    if (digitalRead(PIN_HC165_DATA) == LOW) pressed |= 1 << i;
+    digitalWrite(PIN_HC165_CLK, HIGH);
+    delayMicroseconds(1);
+    digitalWrite(PIN_HC165_CLK, LOW);
+  }
+  return pressed;
+}
+
+// True once per press, after 30 ms of debounce.
+static bool pressedEdge(bool down, bool& wasDown, uint32_t& changedAt) {
+  if (down == wasDown || millis() - changedAt < 30) return false;
+  wasDown = down;
+  changedAt = millis();
+  return down;
+}
+
+static void pollButtons() {
+  static bool startWas = false, aWas = false;
+  static uint32_t startAt = 0, aAt = 0;
+  if (pressedEdge(digitalRead(PIN_BTN_START) == LOW, startWas, startAt)) {
+    qrShown = false;
+    lastCommandAt = millis();
+    setFace((faceIndex + 1) % kFaceCount);
+    ack();
+  }
+  if (pressedEdge(readShiftButtons() & 0x01, aWas, aAt)) {
+    qrUrl = kJoinUrl;
+    qrShown = qrDirty = true;
+    qrHideAt = millis() + kJoinQrMs;
+    ack();
   }
 }
 
@@ -468,9 +504,11 @@ static void renderQr() {
   if (!qrDirty) return;
   qrDirty = false;
   canvas.fillScreen(kPaper);
-  int size = captionLines.empty() ? 224 : (captionLines.size() > 1 ? 160 : 190);
+  // The A button's QR goes full size; the caption belongs to the face.
+  bool captioned = qrHideAt == 0 && !captionLines.empty();
+  int size = !captioned ? 224 : (captionLines.size() > 1 ? 160 : 190);
   canvas.qrcode(qrUrl.c_str(), (W - size) / 2, 8, size);
-  drawCaption();
+  if (captioned) drawCaption();
   canvas.pushSprite(0, 0);
 }
 
@@ -521,9 +559,16 @@ static void renderFace(uint32_t now) {
 
 void setup() {
   Serial.setRxBufferSize(2048);
-  Serial.setTxTimeoutMs(0);  // never stall the animation when nobody is reading
+  // Plugged in but nobody reading: give up after 10 ms and drop output until a
+  // reader shows up. (0 makes HWCDC retry ~forever once its buffer fills.)
+  Serial.setTxTimeoutMs(10);
   Serial.begin(115200);
   pinMode(PIN_BTN_START, INPUT_PULLUP);
+  pinMode(PIN_HC165_DATA, INPUT_PULLUP);
+  pinMode(PIN_HC165_LOAD, OUTPUT);
+  pinMode(PIN_HC165_CLK, OUTPUT);
+  digitalWrite(PIN_HC165_LOAD, HIGH);
+  digitalWrite(PIN_HC165_CLK, LOW);
 
   lcd.init();
   lcd.setRotation(1);  // matches the stock firmware's swap_xy + mirror_x
@@ -540,8 +585,14 @@ void setup() {
 
 void loop() {
   pollSerial();
-  pollButton();
+  pollButtons();
   uint32_t now = millis();
+  if (qrShown && qrHideAt && (int32_t)(now - qrHideAt) >= 0) {
+    qrShown = false;
+    qrHideAt = 0;
+    blinkStart = reactAt = now;
+    ack();
+  }
   if (qrShown) {
     renderQr();
   } else {
