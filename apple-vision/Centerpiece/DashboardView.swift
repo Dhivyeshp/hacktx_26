@@ -1,320 +1,367 @@
 import SwiftUI
 
 private let mint = Color(red: 0.65, green: 0.94, blue: 0.79)
-private let lavender = Color(red: 0.78, green: 0.73, blue: 1)
 
 struct DashboardView: View {
-    @State private var session = DemoSession()
-    @State private var showingConfirmation = false
+    @Bindable var session: DemoSession
+    @State private var relay = RelayClient()
+    @State private var useLiveVideo = RelayConfiguration.bundled() != nil
+    @State private var demoVideoAvailable = true
+    @State private var panel: Panel?
+    @Environment(\.scenePhase) private var scenePhase
+
+    private enum Panel: String, Identifiable {
+        case connection, sharedPage
+        var id: String { rawValue }
+    }
+    private var videoAvailable: Bool { useLiveVideo ? relay.hasFreshFrame : demoVideoAvailable }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            header
-            HStack(alignment: .top, spacing: 22) {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack {
-                        eyebrow("AT THE TABLE")
-                        Spacer()
-                        Label("Camera preview", systemImage: "video")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    RobotPreview(progress: session.progress, paused: session.cameraPaused)
-                        .frame(height: 230)
-                    HStack {
-                        Label("Robot camera · simulated", systemImage: "circle.inset.filled")
-                            .font(.caption).foregroundStyle(mint)
-                        Spacer()
-                        Button {
-                            session.cameraPaused.toggle()
-                        } label: {
-                            Image(systemName: session.cameraPaused ? "play.fill" : "pause.fill")
-                        }
-                        .accessibilityLabel(session.cameraPaused ? "Resume camera preview" : "Pause camera preview")
-                    }
-                    Divider()
-                    tableBalance
+        ZStack(alignment: .topLeading) {
+            cameraBackground
+            VStack(spacing: 22) {
+                header
+                HStack(alignment: .top, spacing: 16) {
+                    playerRail
+                    if session.isDriving { drivingPanel } else { questionPanel }
+                    Spacer(minLength: 28)
+                    transcriptPanel
                 }
-                .padding(22)
-                .frame(width: 340)
-                .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 26))
-
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 6) {
-                            eyebrow("THE NEXT MOMENT")
-                            Text("Bring someone into the game.")
-                                .font(.title2.weight(.semibold))
-                        }
-                        Spacer()
-                        Text("3 suggestions").font(.caption).foregroundStyle(.secondary)
-                    }
-                    ForEach(Challenge.samples) { challenge in
-                        challengeCard(challenge)
-                    }
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+        }
+        .frame(width: 1280, height: 800)
+        .clipShape(RoundedRectangle(cornerRadius: 30))
+        .glassBackgroundEffect()
+        .onAppear {
+            if session.selectedPlayer == nil { session.selectPlayer(Player.samples[0]) }
+            if useLiveVideo { relay.connect() }
+            updateVideoAvailability()
+        }
+        .onDisappear { relay.disconnect(); session.emergencyStop() }
+        .onChange(of: useLiveVideo) { _, live in
+            session.halt()
+            if live { relay.connect() } else { relay.disconnect() }
+            updateVideoAvailability()
+        }
+        .onChange(of: videoAvailable) { _, _ in updateVideoAvailability() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                if useLiveVideo { relay.connect() }
+            } else {
+                session.emergencyStop(); relay.disconnect()
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                session.tick()
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            }
+        }
+        .sheet(item: $panel, onDismiss: { session.controlsSuspended = false }) { item in
+            Group {
+                switch item {
+                case .connection: connectionPanel
+                case .sharedPage: sharedPage
                 }
             }
-            statusBar
-            footer
+            .onAppear { session.controlsSuspended = true; session.halt() }
         }
-        .padding(32)
-        .frame(width: 1180)
-        .background {
-            LinearGradient(colors: [Color(red: 0.09, green: 0.14, blue: 0.16),
-                                    Color(red: 0.08, green: 0.09, blue: 0.14)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    private var cameraBackground: some View {
+        ZStack {
+            Color.black
+            if useLiveVideo {
+                if let frame = relay.latestFrame {
+                    Image(decorative: frame, scale: 1)
+                        .resizable().scaledToFit()
+                        .opacity(relay.hasFreshFrame ? 1 : 0.35)
+                        .frame(width: 1280, height: 800)
+                }
+                if !relay.hasFreshFrame {
+                    VStack(spacing: 10) {
+                        Image(systemName: "video.slash").font(.title)
+                        Text(relay.status).font(.headline)
+                        Text(relay.isConfigured ? "The Pi must stream to the same relay room." : "Open Camera settings for setup.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                Image("DemoTable").resizable().scaledToFill()
+                    .frame(width: 1280, height: 800).clipped()
+                    .opacity(demoVideoAvailable ? 1 : 0.35)
+                if !demoVideoAvailable {
+                    Label("Demo video unavailable", systemImage: "video.slash")
+                        .font(.headline).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
         }
-        .glassBackgroundEffect()
-        .confirmationDialog("Deliver \(session.selected.kind.lowercased()) to \(session.selected.target)?",
-                            isPresented: $showingConfirmation, titleVisibility: .visible) {
-            Button("Confirm demo delivery") { session.deliver() }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This is an offline simulation. No robot will move.")
-        }
-        .onDisappear { session.stop() }
+        .allowsHitTesting(false)
+        .accessibilityLabel(useLiveVideo ? "Robot camera: \(relay.status)" : "Illustrative demo camera photo")
     }
 
     private var header: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "circle.hexagongrid.fill")
-                .font(.system(size: 28)).foregroundStyle(mint)
-                .frame(width: 56, height: 56)
-                .background(mint.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("centerpiece").font(.system(size: 30, weight: .semibold, design: .rounded))
-                Text("A little nudge. A better night.").font(.subheadline).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Label("Offline demo", systemImage: "testtube.2")
-                .font(.subheadline).foregroundStyle(mint)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(mint.opacity(0.08), in: Capsule())
-            Divider().frame(height: 34).padding(.horizontal, 10)
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("ROUND 01 / 04").font(.caption.weight(.semibold)).tracking(2)
-                Text("You’re the Game Master").font(.subheadline).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var tableBalance: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Room to connect").font(.headline)
-                Spacer()
-                Text("Sample talk time").font(.caption2).foregroundStyle(.secondary)
-            }
-            ForEach(Array(zip(["Maya", "Jordan", "Alex", "Sam"], [6, 38, 32, 24])), id: \.0) { name, share in
-                HStack(spacing: 12) {
-                    Text(name).font(.subheadline).frame(width: 54, alignment: .leading)
-                    GeometryReader { geometry in
-                        Capsule().fill(.white.opacity(0.07))
-                        Capsule().fill(name == "Maya" ? mint : .white.opacity(0.3))
-                            .frame(width: max(8, geometry.size.width * Double(share) / 45))
-                    }
-                    .frame(height: 5)
-                    Text("\(share)%").font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary).frame(width: 32, alignment: .trailing)
-                }
-            }
-            Text("A quieter voice could lead the next round.")
-                .font(.caption).foregroundStyle(mint).padding(.top, 2)
-        }
-    }
-
-    private func challengeCard(_ challenge: Challenge) -> some View {
-        let selected = session.selectedID == challenge.id
-        let accent = challenge.id == 0 ? mint : challenge.id == 1 ? Color.orange : lavender
-        return Button {
-            session.selectedID = challenge.id
-        } label: {
-            HStack(alignment: .top, spacing: 16) {
-                Image(systemName: challenge.symbol)
-                    .font(.title3).foregroundStyle(accent)
-                    .frame(width: 44, height: 44)
-                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(challenge.kind).font(.caption2.weight(.bold)).tracking(1.8).foregroundStyle(accent)
-                        if challenge.id == 0 {
-                            Text("TOP PICK").font(.system(size: 9, weight: .bold)).tracking(1)
-                                .padding(.horizontal, 7).padding(.vertical, 3)
-                                .background(mint.opacity(0.12), in: Capsule()).foregroundStyle(mint)
-                        }
-                        Spacer()
-                        Text(challenge.duration).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(challenge.title).font(.title3.weight(.semibold))
-                    HStack(spacing: 6) {
-                        Text(challenge.target).fontWeight(.semibold)
-                        Text("· \(challenge.partner)").foregroundStyle(.secondary)
-                    }.font(.subheadline)
-                    Text(challenge.reason).font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true).lineSpacing(3)
-                }
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected ? mint : .white.opacity(0.25))
-                    .font(.title3).padding(.top, 3)
-            }
-            .padding(18)
-            .background(selected ? mint.opacity(0.07) : .white.opacity(0.035), in: RoundedRectangle(cornerRadius: 22))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22)
-                    .strokeBorder(selected ? mint.opacity(0.65) : .white.opacity(0.08), lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 22))
-        }
-        .buttonStyle(.plain)
-        .hoverEffect(.highlight)
-        .disabled(!session.canSelect)
-        .accessibilityLabel("\(challenge.kind), \(challenge.title), for \(challenge.target). \(challenge.reason)")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-
-    private var statusBar: some View {
-        HStack(spacing: 18) {
-            Image(systemName: statusSymbol)
-                .font(.title2).foregroundStyle(session.phase == .failed ? .orange : mint)
-                .frame(width: 44)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(session.phase.rawValue).font(.headline)
-                Text(session.detail).font(.caption).foregroundStyle(.secondary)
-                if session.isBusy {
-                    ProgressView(value: session.progress).tint(mint).frame(maxWidth: 360)
-                }
-            }
-            Spacer()
-            if session.isBusy {
-                Button(role: .destructive) { session.stop() } label: {
-                    Label("Stop demo", systemImage: "stop.fill").padding(.horizontal, 12)
-                }
-                .tint(.red)
-            } else if session.canSelect {
-                Button { showingConfirmation = true } label: {
-                    HStack(spacing: 12) {
-                        Text("Deliver to \(session.selected.target)")
-                        Image(systemName: "arrow.right")
-                    }.font(.headline).padding(.horizontal, 12).padding(.vertical, 5)
-                }
-                .tint(mint).buttonStyle(.borderedProminent).foregroundStyle(.black)
-            } else {
-                Button { session.reset() } label: {
-                    Label("Try another round", systemImage: "arrow.counterclockwise")
-                }.tint(mint)
-            }
-        }
-        .padding(20)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 24))
-        .animation(.easeInOut(duration: 0.2), value: session.phase)
-    }
-
-    private var footer: some View {
         HStack {
-            Label("Look at a card and pinch to select", systemImage: "hand.pinch.fill")
+            HStack(spacing: 10) {
+                Image(systemName: "circle.hexagongrid.fill").foregroundStyle(mint)
+                Text("centerpiece").font(.system(size: 16, weight: .semibold, design: .rounded))
+                Divider().frame(height: 16)
+                Text("Hot Seat").font(.system(size: 12)).foregroundStyle(.secondary)
+            }.padding(.horizontal, 16).frame(height: 44).glassPanel(radius: 24)
             Spacer()
-            Menu {
-                Toggle("Simulate robot error", isOn: $session.simulateFailure)
-                Toggle("Pause camera preview", isOn: $session.cameraPaused)
-                Button("Reset demo", action: session.reset)
-            } label: {
-                Label("Demo controls", systemImage: "slider.horizontal.3")
+            Button { panel = .connection } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: useLiveVideo ? "video.fill" : "photo")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ROBOT CAM 01").font(.system(size: 10, weight: .semibold)).tracking(1)
+                        Text(useLiveVideo ? relay.status : "Demo photo · controls mocked")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    Circle().fill(useLiveVideo && relay.hasFreshFrame ? mint : .orange).frame(width: 6, height: 6)
+                }.padding(.horizontal, 14).frame(height: 44).glassPanel(radius: 24)
+            }.buttonStyle(.plain).hoverEffect(.highlight).accessibilityLabel("Camera settings")
+        }
+    }
+
+    private var playerRail: some View {
+        VStack(spacing: 14) {
+            Text("PLAYERS").font(.system(size: 9, weight: .semibold)).tracking(1.6).foregroundStyle(.secondary)
+            ForEach(Player.samples) { player in
+                let selected = player.id == session.selectedPlayerID
+                Button { session.selectPlayer(player) } label: {
+                    VStack(spacing: 6) {
+                        ProfilePhoto(playerID: player.id, size: 44)
+                            .padding(3)
+                            .overlay(Circle().stroke(selected ? mint : .white.opacity(0.3), lineWidth: selected ? 2 : 1))
+                            .overlay(alignment: .bottomTrailing) {
+                                if selected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 15)).foregroundStyle(.black, mint)
+                                }
+                            }
+                        Text(player.name).font(.system(size: 11, weight: selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? mint : .white)
+                    }.frame(width: 56).padding(.vertical, 3).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).hoverEffect(.highlight)
+                .disabled(session.isDriving || session.isBusy)
+                .accessibilityLabel("Select \(player.name)")
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
             }
-            .disabled(session.isBusy)
-            Text("No server · No hardware connected").foregroundStyle(.tertiary)
-        }
-        .font(.caption).foregroundStyle(.secondary)
+        }.padding(12).glassPanel()
     }
 
-    private var statusSymbol: String {
-        switch session.phase {
-        case .ready: "sparkle"
-        case .sending: "arrow.up.circle"
-        case .delivering: "shippingbox"
-        case .complete: "checkmark.circle.fill"
-        case .stopped: "stop.circle"
-        case .failed: "exclamationmark.triangle"
+    private var questionPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("FOR \(session.selectedPlayer?.name.uppercased() ?? "YOUR PLAYER")")
+                .font(.system(size: 10, weight: .bold)).tracking(1.4).foregroundStyle(mint)
+            Text("Pick their next question").font(.system(size: 20, weight: .semibold))
+            Text("Choose one, then position the robot.").font(.system(size: 11)).foregroundStyle(.secondary)
+            if let player = session.selectedPlayer {
+                ForEach(Array(player.questions.enumerated()), id: \.offset) { index, question in
+                    let selected = session.selectedQuestionIndex == index
+                    Button { session.selectQuestion(index) } label: {
+                        HStack(spacing: 10) {
+                            Text(String(format: "%02d", index + 1)).font(.system(size: 11).monospacedDigit())
+                                .foregroundStyle(selected ? mint : .secondary)
+                            Text(question).font(.system(size: 13, weight: .medium)).multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 19)).foregroundStyle(selected ? mint : .white.opacity(0.45))
+                        }.padding(12).frame(minHeight: 68)
+                        .background(selected ? mint.opacity(0.15) : .white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected ? mint : .white.opacity(0.25), lineWidth: 1))
+                        .contentShape(RoundedRectangle(cornerRadius: 14))
+                    }.buttonStyle(.plain).hoverEffect(.highlight)
+                        .accessibilityAddTraits(selected ? [.isSelected] : [])
+                }
+            }
+            Divider().padding(.top, 4)
+            HStack {
+                Text(session.selection == nil ? "Choose a question" : "Selected for \(session.selectedPlayer?.name ?? "player")")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer(minLength: 6)
+                Button { session.enterDriving() } label: {
+                    HStack(spacing: 6) { Text("Ready to drive"); Image(systemName: "arrow.right") }
+                        .font(.system(size: 11, weight: .semibold)).padding(.vertical, 4)
+                }.buttonStyle(.borderedProminent).tint(mint).foregroundStyle(.black)
+                    .disabled(session.selection == nil)
+            }
+        }.padding(18).frame(width: 310).glassPanel()
+    }
+
+    private var transcriptPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 9) {
+                Image(systemName: "waveform").font(.title3).foregroundStyle(mint)
+                Text("Transcript").font(.system(size: 18, weight: .semibold))
+                Spacer()
+                Text("Demo").font(.system(size: 9)).padding(.horizontal, 9).padding(.vertical, 4)
+                    .overlay(Capsule().stroke(.white.opacity(0.3)))
+            }
+            Text("Table conversation").font(.system(size: 11)).foregroundStyle(.secondary)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    transcript("Jordan", "00:42", "If we could go anywhere this weekend, where would we go?")
+                    Divider()
+                    transcript("Maya", "00:48", "Somewhere with mountains. I’ve always wanted to try climbing outdoors.")
+                    Divider()
+                    transcript("Alex", "00:55", "I’d choose the coast. A beach trip sounds pretty good.")
+                    Divider()
+                    transcript("Sam", "01:02", "Can we build a tiny cabin and do both?")
+                }
+            }.frame(maxHeight: 330)
+            Text("Sample conversation").font(.system(size: 10)).foregroundStyle(.secondary)
+        }.padding(18).frame(width: 280).glassPanel()
+    }
+
+    private func transcript(_ name: String, _ time: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(name).font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(name == session.selectedPlayer?.name ? mint : .white)
+                Spacer()
+                Text(time).font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
+            }
+            Text(text).font(.system(size: 12)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func eyebrow(_ text: String) -> some View {
-        Text(text).font(.system(size: 10, weight: .semibold)).tracking(2.5).foregroundStyle(.secondary)
+    private var drivingPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("FOR \(session.selectedPlayer?.name.uppercased() ?? "PLAYER")")
+                    .font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(mint)
+                Spacer()
+                Text("Demo controls").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            Text(session.selection?.question ?? "Selected question").font(.system(size: 14, weight: .medium))
+            if session.phase == .ready {
+                RobotDriveControls(session: session)
+                Divider()
+                if session.armed {
+                    CapsuleDropControl(session: session)
+                } else {
+                    Button { session.arm() } label: {
+                        Label("Arm capsule drop", systemImage: "shippingbox")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(maxWidth: .infinity).frame(height: 30)
+                    }
+                    .disabled(!session.canArm)
+                    Text("Release the drive pinch before arming.")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text(session.armed ? "ARMED" : "DROP DISARMED")
+                        .font(.system(size: 9, weight: .bold)).tracking(1)
+                        .foregroundStyle(session.armed ? mint : .secondary)
+                    Spacer()
+                    Button(role: .destructive) { session.emergencyStop() } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                    }.font(.system(size: 12))
+                }
+            } else if session.isBusy {
+                HStack { ProgressView(); Text(session.phase.rawValue).font(.caption) }
+                Button("Stop", role: .destructive) { session.emergencyStop() }
+            } else {
+                Button("Finish round") { session.finishRound() }
+            }
+            Text(session.status).font(.system(size: 11)).foregroundStyle(.secondary)
+            Divider()
+            HStack {
+                if !session.roundInProgress {
+                    Button("Change question") { session.editSelection() }.disabled(session.isBusy)
+                }
+                Spacer()
+                Button("Page preview") { panel = .sharedPage }
+            }.font(.system(size: 10))
+        }.padding(18).frame(width: 310).glassPanel()
+    }
+
+    private var connectionPanel: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Camera & demo settings").font(.title2)
+            Toggle("Live relay video", isOn: $useLiveVideo)
+            Text(useLiveVideo ? relay.status : "Showing an illustrative photo, not live video.").font(.subheadline)
+            if !relay.isConfigured {
+                Text("Add RELAY_TOKEN to apple-vision/.env, then rebuild and run from Xcode.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if useLiveVideo {
+                Text("Room: \(relay.room) · JPEG frames: \(relay.framesReceived)").font(.caption.monospacedDigit())
+                Text("Peers: \(relay.peers.isEmpty ? "none" : relay.peers.joined(separator: ", "))").font(.caption)
+                Button("Reconnect") { relay.reconnect() }.disabled(!relay.isConfigured)
+            } else {
+                Toggle("Demo video available", isOn: $demoVideoAvailable)
+            }
+            Divider()
+            Text("Robot commands and transcript remain simulated.").font(.caption).foregroundStyle(.secondary)
+            Picker("Next demo drop failure", selection: $session.failure) {
+                ForEach(DemoFailure.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.disabled(session.isBusy)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(session.events.enumerated()), id: \.offset) { _, event in Text(event) }
+                }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(height: 100)
+            Button("Done") { panel = nil }
+        }.padding(30).frame(width: 520)
+    }
+
+    private var sharedPage: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Shared capsule page").font(.title2)
+            Text("Local preview · every tag opens the same URL").font(.caption).foregroundStyle(.secondary)
+            if let question = session.activeQuestion {
+                Text("For \(question.playerName)").foregroundStyle(mint)
+                Text(question.question).font(.title3)
+            } else { Text("No question assigned yet.") }
+            Button("Done") { panel = nil }
+        }.padding(30).frame(width: 480)
+    }
+
+    private func updateVideoAvailability() {
+        guard session.cameraAvailable != videoAvailable else { return }
+        session.cameraAvailable = videoAvailable
+        session.cameraChanged()
+    }
+
+
+}
+
+/// Display crops of the generated demo photo, not real player identity data.
+private struct ProfilePhoto: View {
+    let playerID: Int
+    let size: CGFloat
+    private var crop: CGRect {
+        [CGRect(x: 565, y: 20, width: 230, height: 230),
+         CGRect(x: 835, y: 75, width: 180, height: 180),
+         CGRect(x: 1045, y: 95, width: 190, height: 190),
+         CGRect(x: 1280, y: 80, width: 190, height: 190)][playerID % 4]
+    }
+    var body: some View {
+        let scale = size / crop.width
+        Image("DemoTable").resizable()
+            .frame(width: 1536 * scale, height: 1024 * scale)
+            .offset(x: -crop.minX * scale, y: -crop.minY * scale)
+            .frame(width: size, height: size, alignment: .topLeading)
+            .clipShape(Circle())
+            .accessibilityHidden(true)
     }
 }
 
-private struct RobotPreview: View {
-    let progress: Double
-    let paused: Bool
-    @State private var frozenProgress = 0.0
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let height = geometry.size.height
-            let visibleProgress = paused ? frozenProgress : progress
-            ZStack {
-                Color(red: 0.035, green: 0.065, blue: 0.075)
-                Path { path in
-                    for index in 0...10 {
-                        let x = CGFloat(index) * width / 10
-                        path.move(to: CGPoint(x: width / 2 + (x - width / 2) * 0.3, y: 30))
-                        path.addLine(to: CGPoint(x: x, y: height))
-                    }
-                    for index in 1...7 {
-                        let y = CGFloat(index) * height / 7
-                        path.move(to: CGPoint(x: 0, y: y))
-                        path.addLine(to: CGPoint(x: width, y: y))
-                    }
-                }.stroke(mint.opacity(0.08), lineWidth: 1)
-
-                Ellipse().fill(.black.opacity(0.3)).frame(width: 240, height: 90).offset(y: 45)
-                Ellipse().fill(Color(red: 0.15, green: 0.23, blue: 0.25))
-                    .overlay(Ellipse().stroke(mint.opacity(0.3), lineWidth: 2))
-                    .frame(width: 222, height: 106).offset(y: 26)
-                ForEach(0..<6) { index in
-                    let angle = Double(index) * .pi / 3 + visibleProgress * .pi / 3
-                    Capsule()
-                        .fill(index == 2 ? mint : lavender.opacity(0.7))
-                        .frame(width: 27, height: 33)
-                        .overlay(Capsule().stroke(.white.opacity(0.3)))
-                        .overlay(Rectangle().fill(.black.opacity(0.2)).frame(height: 1))
-                        .offset(x: cos(angle) * 82, y: sin(angle) * 33 + 13)
-                }
-                Path { path in
-                    path.move(to: CGPoint(x: width * 0.76, y: height * 0.74))
-                    path.addLine(to: CGPoint(x: width * 0.76, y: height * 0.28))
-                    path.addLine(to: CGPoint(x: width * 0.5, y: height * 0.28))
-                    path.addLine(to: CGPoint(x: width * 0.5, y: height * (0.35 + sin(visibleProgress * .pi) * 0.12)))
-                }.stroke(Color.gray, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
-                Image(systemName: "arrow.down.left.and.arrow.up.right")
-                    .font(.system(size: 27, weight: .bold)).foregroundStyle(.white.opacity(0.8))
-                    .position(x: width * 0.5, y: height * (0.4 + sin(visibleProgress * .pi) * 0.12))
-                VStack {
-                    HStack {
-                        Label(paused ? "PAUSED" : "SIMULATED VIEW", systemImage: paused ? "pause.circle.fill" : "video.fill")
-                        Spacer()
-                        Text("CAM 01")
-                    }
-                    Spacer()
-                    HStack {
-                        Text("CAROUSEL / 6 SLOTS")
-                        Spacer()
-                        Image(systemName: "viewfinder")
-                    }
-                }
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .tracking(1).foregroundStyle(.white.opacity(0.65)).padding(16)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .animation(.linear(duration: 0.2), value: visibleProgress)
-        }
-        .onChange(of: paused) { _, isPaused in
-            if isPaused { frozenProgress = progress }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(paused ? "Simulated camera preview paused" : "Simulated six-slot carousel and robot arm. Not a real camera feed.")
+private extension View {
+    func glassPanel(radius: CGFloat = 22) -> some View {
+        self.background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: radius))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).stroke(.white.opacity(0.24), lineWidth: 0.75))
+            .shadow(color: .black.opacity(0.15), radius: 15, y: 6)
     }
 }
 
 #Preview {
-    DashboardView().preferredColorScheme(.dark)
+    DashboardView(session: DemoSession()).preferredColorScheme(.dark)
 }
