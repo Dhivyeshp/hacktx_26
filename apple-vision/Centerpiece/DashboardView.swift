@@ -4,9 +4,11 @@ private let mint = Color(red: 0.65, green: 0.94, blue: 0.79)
 
 struct DashboardView: View {
     @Bindable var session: DemoSession
-    @State private var relay = RelayClient()
-    @State private var useLiveVideo = RelayConfiguration.bundled() != nil
-    @State private var demoVideoAvailable = true
+    @Bindable var experience: ImmersiveExperience
+    var onExitImmersive: () -> Void = {}
+    private var relay: RelayClient { experience.relay }
+    private var useLiveVideo: Bool { experience.useLiveVideo }
+    private var demoVideoAvailable: Bool { experience.demoVideoAvailable }
     @State private var panel: Panel?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -30,16 +32,30 @@ struct DashboardView: View {
                 Spacer(minLength: 0)
             }
             .padding(24)
+            if let panel {
+                Color.black.opacity(0.5)
+                    .onTapGesture { self.panel = nil }
+                Group {
+                    switch panel {
+                    case .connection: connectionPanel
+                    case .sharedPage: sharedPage
+                    }
+                }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26))
+                .overlay(RoundedRectangle(cornerRadius: 26).stroke(.white.opacity(0.15)))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .frame(width: 1280, height: 800)
-        .clipShape(RoundedRectangle(cornerRadius: 30))
-        .glassBackgroundEffect()
+        .clipped()
         .onAppear {
             if session.selectedPlayer == nil { session.selectPlayer(Player.samples[0]) }
             if useLiveVideo { relay.connect() }
             updateVideoAvailability()
         }
-        .onDisappear { relay.disconnect(); session.emergencyStop() }
+        .onDisappear {
+            relay.disconnect(); session.emergencyStop(); session.controlsSuspended = false
+        }
         .onChange(of: useLiveVideo) { _, live in
             session.halt()
             if live { relay.connect() } else { relay.disconnect() }
@@ -59,14 +75,9 @@ struct DashboardView: View {
                 do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
             }
         }
-        .sheet(item: $panel, onDismiss: { session.controlsSuspended = false }) { item in
-            Group {
-                switch item {
-                case .connection: connectionPanel
-                case .sharedPage: sharedPage
-                }
-            }
-            .onAppear { session.controlsSuspended = true; session.halt() }
+        .onChange(of: panel) { _, panel in
+            session.controlsSuspended = panel != nil
+            if panel != nil { session.halt() }
         }
     }
 
@@ -111,6 +122,11 @@ struct DashboardView: View {
                 Text("Hot Seat").font(.system(size: 12)).foregroundStyle(.secondary)
             }.padding(.horizontal, 16).frame(height: 44).glassPanel(radius: 24)
             Spacer()
+            Button(action: onExitImmersive) {
+                Label("Exit immersive", systemImage: "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 14).frame(height: 44).glassPanel(radius: 24)
+            }.buttonStyle(.plain).hoverEffect(.highlight)
             Button { panel = .connection } label: {
                 HStack(spacing: 10) {
                     Image(systemName: useLiveVideo ? "video.fill" : "photo")
@@ -284,7 +300,7 @@ struct DashboardView: View {
     private var connectionPanel: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Camera & demo settings").font(.title2)
-            Toggle("Live relay video", isOn: $useLiveVideo)
+            Toggle("Live relay video", isOn: $experience.useLiveVideo)
             Text(useLiveVideo ? relay.status : "Showing an illustrative photo, not live video.").font(.subheadline)
             if !relay.isConfigured {
                 Text("Add RELAY_TOKEN to apple-vision/.env, then rebuild and run from Xcode.")
@@ -295,7 +311,7 @@ struct DashboardView: View {
                 Text("Peers: \(relay.peers.isEmpty ? "none" : relay.peers.joined(separator: ", "))").font(.caption)
                 Button("Reconnect") { relay.reconnect() }.disabled(!relay.isConfigured)
             } else {
-                Toggle("Demo video available", isOn: $demoVideoAvailable)
+                Toggle("Demo video available", isOn: $experience.demoVideoAvailable)
             }
             Divider()
             Text("Robot commands and transcript remain simulated.").font(.caption).foregroundStyle(.secondary)
@@ -363,5 +379,5 @@ private extension View {
 }
 
 #Preview {
-    DashboardView(session: DemoSession()).preferredColorScheme(.dark)
+    DashboardView(session: DemoSession(), experience: ImmersiveExperience()).preferredColorScheme(.dark)
 }
