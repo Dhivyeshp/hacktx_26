@@ -146,6 +146,12 @@ export function jsonify(value: unknown): unknown {
   return value
 }
 
+// EventParser keeps the IDL's snake_case field names; the REST API and docs use camelCase.
+const camelKeys = (data: unknown) =>
+  Object.fromEntries(
+    Object.entries(data as Record<string, unknown>).map(([k, v]) => [k.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), v]),
+  )
+
 /** Calls `onEvent` for every program event as transactions land. Returns an unsubscribe function. */
 export function subscribeEvents(connection: Connection, onEvent: (e: ChainEvent) => void, programId = PROGRAM_ID) {
   const parser = new EventParser(programId, new BorshCoder(idl as any))
@@ -154,7 +160,7 @@ export function subscribeEvents(connection: Connection, onEvent: (e: ChainEvent)
     (logs, ctx) => {
       if (logs.err) return
       for (const ev of parser.parseLogs(logs.logs))
-        onEvent({ name: ev.name, data: jsonify(ev.data) as Record<string, unknown>, signature: logs.signature, slot: ctx.slot })
+        onEvent({ name: ev.name, data: camelKeys(jsonify(ev.data)), signature: logs.signature, slot: ctx.slot })
     },
     'confirmed',
   )
