@@ -68,7 +68,7 @@ Mainnet is rejected before wallet creation or chain writes. The game server
 does not use or expose the chain admin's signing key.
 
 Player keypairs are generated on the game server and encrypted with AES-256-GCM
-in SQLite before registration. Only public addresses are sent to the chain
+in TigerDB before registration. Only public addresses are sent to the chain
 service. Keys and API tokens never appear in player or GM snapshots. Back up
 the database and encryption key together. There is no player key-export UI.
 

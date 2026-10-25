@@ -14,7 +14,7 @@ import {
 } from "./conversation";
 import { instagramReady } from "./instagram";
 import { playerRewards, rewardsSnapshot } from "./rewards";
-export function createRoom(db: DB, name: string): Session {
+export async function createRoom(db: DB, name: string): Promise<Session> {
   const room: Session = {
     rewardGameId: randomUUID(),
     id: randomUUID(),
@@ -28,8 +28,8 @@ export function createRoom(db: DB, name: string): Session {
     sources: {},
     context: "",
   };
-  save(db, room);
-  event(db, room, "room.created");
+  await save(db, room);
+  await event(db, room, "room.created");
   return room;
 }
 export function roomInfo(s: Session): RoomInfo {
@@ -46,17 +46,21 @@ export function roomInfo(s: Session): RoomInfo {
 }
 export const activeQuestion = (s: Session) =>
   [...s.rounds].reverse().find((r) => r.status === "assigned") || null;
-export function snapshot(db: DB, s: Session, meId: string): Snapshot {
+export async function snapshot(
+  db: DB,
+  s: Session,
+  meId: string,
+): Promise<Snapshot> {
   return {
     room: roomInfo(s),
     me: s.players.find((p) => p.id === meId)!,
-    rewards: playerRewards(db, s, meId),
+    rewards: await playerRewards(db, s, meId),
     sources: s.sources[meId] || [],
-    connected: !!db
+    connected: !!(await db
       .prepare(
         "SELECT player_id FROM connections WHERE player_id=? AND expires_at>?",
       )
-      .get(meId, Date.now()),
+      .get(meId, Date.now())),
     instagramReady: instagramReady(),
     notice: s.profileNotices?.[meId],
   };
@@ -99,12 +103,12 @@ export function controlSnapshot(s: Session): ControlSnapshot {
   };
 }
 
-export function questionsSnapshot(
+export async function questionsSnapshot(
   s: Session,
   preparing = false,
   canControl = false,
   db?: DB,
-): QuestionsSnapshot {
+): Promise<QuestionsSnapshot> {
   const batches = s.suggestionBatches?.length
     ? s.suggestionBatches
     : s.recommendations.length
@@ -119,7 +123,7 @@ export function questionsSnapshot(
       : [];
   return {
     schemaVersion: 1,
-    ...(db ? { rewards: rewardsSnapshot(db, s) } : {}),
+    ...(db ? { rewards: await rewardsSnapshot(db, s) } : {}),
     room: roomInfo(s),
     players: s.players.map((p) => ({
       id: p.id,
@@ -147,7 +151,7 @@ export function questionsSnapshot(
           segment.speakerId,
       })),
       transcriptionReady: !!process.env.DEEPGRAM_API_KEY,
-      ...sessionRequestUsage(s.id, db),
+      ...(await sessionRequestUsage(s.id, db)),
     },
   };
 }

@@ -1,15 +1,23 @@
 /**
- * Creates the TigerDB (TimescaleDB) transcript schema. Idempotent.
+ * Creates the whole TigerDB (TimescaleDB) schema. Idempotent.
  *
- *   npm run tigerdb:migrate      create the hypertable and continuous aggregate
+ *   npm run tigerdb:migrate      create every table, the hypertable and the
+ *                                continuous aggregate
  *   npm run tigerdb:check        print row counts as evidence the store is live
+ *
+ * TigerDB is the only store, so this covers game state, credentials, Game
+ * Master grants and rewards as well as the transcript. The game tables are
+ * imported from server/db.ts, which creates the same statements on start, so a
+ * migration and a server boot can never disagree about the shape.
  *
  * Requires TIGER_DATABASE_URL. Never prints the connection string.
  */
 import "dotenv/config";
 import { Pool } from "pg";
+import { gameSchema } from "../server/db";
 
 const statements = [
+  ...gameSchema,
   `CREATE EXTENSION IF NOT EXISTS timescaledb`,
   `CREATE TABLE IF NOT EXISTS transcript_segments (
      at            timestamptz NOT NULL,
@@ -100,6 +108,16 @@ async function check() {
         WHERE hypertable_name = 'transcript_segments'`,
     );
     console.log(`hypertable chunks: ${chunks.rows[0]?.n ?? 0}`);
+    const game = await db.query(
+      `SELECT count(*)::int AS sessions,
+              (SELECT count(*)::int FROM events)          AS events,
+              (SELECT count(*)::int FROM reward_reviews)  AS reward_reviews
+         FROM sessions`,
+    );
+    const { sessions, events, reward_reviews } = game.rows[0];
+    console.log(
+      `game state: ${sessions} rooms  ${events} events  ${reward_reviews} reviewed rounds`,
+    );
     if (!rows.rowCount) console.log("No transcript rows recorded yet.");
     for (const row of rows.rows)
       console.log(

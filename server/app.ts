@@ -6,7 +6,7 @@ import express, {
 import cookieParser from "cookie-parser";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { openDb, getSession, save, event, type Session } from "./db";
+import { openDb, getSession, save, event, type DB, type Session } from "./db";
 import { encrypt, tokenHash } from "./security";
 import { extract, recommend, validCandidate, fallback } from "./ai";
 import {
@@ -41,22 +41,25 @@ import { createRewardEngine } from "./rewards";
 import type { RoomEvent, Source } from "../shared/types";
 const cookie = "centerpiece";
 const text = z.string().trim().min(1).max(60);
-export function createApp(db = openDb()) {
+export async function createApp(existing?: DB) {
+  const db = existing ?? (await openDb());
   const demoMode = process.env.DEMO_MODE === "true";
   const minimumPlayers = demoMode ? 2 : 3;
   const demoCode = process.env.DEMO_ROOM_CODE?.trim().toUpperCase();
-  function demoRoom() {
-    const s = demoCode && getSession(db, demoCode);
+  async function demoRoom() {
+    const s = demoCode ? await getSession(db, demoCode) : undefined;
     if (!s)
       throw Object.assign(new Error("The demo game is not configured yet."), {
         status: 503,
       });
     return s;
   }
-  db.prepare("DELETE FROM connections WHERE expires_at<?").run(Date.now());
-  db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
+  await db
+    .prepare("DELETE FROM connections WHERE expires_at<?")
+    .run(Date.now());
+  await db.prepare("DELETE FROM oauth WHERE expires_at<?").run(Date.now());
   const app = express();
-  configureConversationBudget(db);
+  await configureConversationBudget(db);
   const audio = createAudioBridge(db);
   const rewards = createRewardEngine(db);
   const generating = new Set<string>();
@@ -87,12 +90,12 @@ export function createApp(db = openDb()) {
     next();
   });
   let eventSink: ((event: RoomEvent) => void) | undefined;
-  const touch = (s: Session, type: string) => {
+  const touch = async (s: Session, type: string) => {
     s.version++;
-    db.transaction(() => {
-      save(db, s);
-      event(db, s, type);
-    })();
+    await db.transaction(async (tx) => {
+      await save(tx, s);
+      await event(tx, s, type);
+    });
     eventSink?.({
       schemaVersion: 1,
       type,
@@ -107,17 +110,16 @@ export function createApp(db = openDb()) {
       Promise.resolve()
         .then(() => fn(req, res))
         .catch(next);
-  function identity(req: Request) {
+  async function identity(req: Request) {
     const token = req.cookies[cookie];
     if (typeof token !== "string") return undefined;
-    return db
+    return await db
       .prepare("SELECT session_id,player_id FROM credentials WHERE token=?")
-      .get(tokenHash(token)) as
-      { session_id: string; player_id: string } | undefined;
+      .get<{ session_id: string; player_id: string }>(tokenHash(token));
   }
-  function auth(req: Request) {
-    const who = identity(req);
-    const s = who && getSession(db, who.session_id);
+  async function auth(req: Request) {
+    const who = await identity(req);
+    const s = who && (await getSession(db, who.session_id));
     if (!who || !s || !s.players.some((p) => p.id === who.player_id))
       throw Object.assign(
         new Error("Scan Tina’s room QR to join before opening a prompt."),
@@ -132,8 +134,8 @@ export function createApp(db = openDb()) {
         { status: 409 },
       );
   }
-  function room(req: Request) {
-    const s = getSession(
+  async function room(req: Request) {
+    const s = await getSession(
       db,
       req.params.code ||
         (req as Request & { controlRoom?: string }).controlRoom ||
@@ -146,13 +148,11 @@ export function createApp(db = openDb()) {
       );
     return s;
   }
-  function issue(res: Response, s: Session, playerId: string) {
+  async function issue(res: Response, s: Session, playerId: string) {
     const token = randomBytes(32).toString("hex");
-    db.prepare("INSERT INTO credentials VALUES(?,?,?)").run(
-      tokenHash(token),
-      s.id,
-      playerId,
-    );
+    await db
+      .prepare("INSERT INTO credentials VALUES(?,?,?)")
+      .run(tokenHash(token), s.id, playerId);
     res.cookie(cookie, token, {
       httpOnly: true,
       sameSite: "lax",
@@ -172,7 +172,7 @@ export function createApp(db = openDb()) {
     prefix = "",
   ) {
     const result = await extract(sources);
-    const current = getSession(db, s.id)!;
+    const current = (await getSession(db, s.id))!;
     active(current);
     current.sources[me] = [
       ...(current.sources[me] || []).filter(
@@ -209,18 +209,18 @@ export function createApp(db = openDb()) {
   }
   app.get(
     "/api/demo",
-    wrap((_req, res) => {
+    wrap(async (_req, res) => {
       res.json(
         demoMode
-          ? { enabled: true, room: roomInfo(demoRoom()) }
+          ? { enabled: true, room: roomInfo(await demoRoom()) }
           : { enabled: false },
       );
     }),
   );
   app.get(
     "/api/rooms/:code",
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       res.json({
         code: s.code,
         name: s.name,
@@ -231,50 +231,50 @@ export function createApp(db = openDb()) {
   );
   app.get(
     "/api/session",
-    wrap((req, res) => {
-      const { s, me } = auth(req);
-      res.json(snapshot(db, s, me));
+    wrap(async (req, res) => {
+      const { s, me } = await auth(req);
+      res.json(await snapshot(db, s, me));
     }),
   );
   app.post(
     "/api/join",
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       const input = z
         .object({ code: text.optional(), name: text })
         .parse(req.body);
       const s = demoMode
-        ? demoRoom()
-        : input.code && getSession(db, input.code);
+        ? await demoRoom()
+        : input.code && (await getSession(db, input.code));
       if (!s)
         return res
           .status(404)
           .json({ error: "Room not found. Scan the bot’s current QR." });
       active(s);
-      const existing = identity(req);
+      const existing = await identity(req);
       if (existing?.session_id === s.id)
-        return res.json(snapshot(db, s, existing.player_id));
+        return res.json(await snapshot(db, s, existing.player_id));
       if (s.players.length >= 6)
         return res
           .status(409)
           .json({ error: "This table already has six players." });
       const id = randomUUID();
       s.players.push({ id, name: input.name, interests: [], participation: 0 });
-      touch(s, "player.joined");
-      issue(res, s, id);
-      res.json(snapshot(db, s, id));
+      await touch(s, "player.joined");
+      await issue(res, s, id);
+      res.json(await snapshot(db, s, id));
     }),
   );
   app.get(
     ["/api/capsule", "/api/relic", "/api/prompt"],
-    wrap((req, res) => {
-      const { s, me } = auth(req);
+    wrap(async (req, res) => {
+      const { s, me } = await auth(req);
       res.json(capsuleSnapshot(s, me));
     }),
   );
   app.post(
     "/api/interests",
-    wrap((req, res) => {
-      const { s, me } = auth(req);
+    wrap(async (req, res) => {
+      const { s, me } = await auth(req);
       active(s);
       const { labels, approvedIds } = z
         .object({
@@ -316,14 +316,14 @@ export function createApp(db = openDb()) {
       p.interests = existing;
       s.recommendations = [];
       notice(s, me, undefined);
-      touch(s, "profile.ready");
-      res.json(snapshot(db, s, me));
+      await touch(s, "profile.ready");
+      res.json(await snapshot(db, s, me));
     }),
   );
   app.post(
     "/api/profile/text",
     wrap(async (req, res) => {
-      const { s, me } = auth(req);
+      const { s, me } = await auth(req);
       active(s);
       const input = z
         .object({ text: z.string().trim().min(1).max(16000) })
@@ -331,14 +331,14 @@ export function createApp(db = openDb()) {
       const current = await imported(s, me, [
         { id: randomUUID(), kind: "bio", text: input.text },
       ]);
-      touch(current, "profile.imported");
-      res.json(snapshot(db, current, me));
+      await touch(current, "profile.imported");
+      res.json(await snapshot(db, current, me));
     }),
   );
   app.post(
     "/api/profile/intro",
     wrap(async (req, res) => {
-      const { s, me } = auth(req);
+      const { s, me } = await auth(req);
       active(s);
       const { text: introText } = z
         .object({ text: z.string().trim().min(10).max(1200) })
@@ -348,7 +348,8 @@ export function createApp(db = openDb()) {
       const lastIntro = previous
         .filter((source) => source.kind === "intro")
         .at(-1);
-      if (lastIntro?.text === introText) return res.json(snapshot(db, s, me));
+      if (lastIntro?.text === introText)
+        return res.json(await snapshot(db, s, me));
       if (analyzingProfiles.has(me))
         return res
           .status(409)
@@ -365,7 +366,7 @@ export function createApp(db = openDb()) {
           text: introText,
         };
         const result = await extract([source]);
-        const current = getSession(db, s.id)!;
+        const current = (await getSession(db, s.id))!;
         active(current);
         const player = current.players.find((p) => p.id === me);
         if (
@@ -414,8 +415,8 @@ export function createApp(db = openDb()) {
               ? "Review the interests suggested from your introduction."
               : "Your introduction is saved. Add any interests you’d like to share."),
         );
-        touch(current, "profile.intro");
-        res.json(snapshot(db, current, me));
+        await touch(current, "profile.intro");
+        res.json(await snapshot(db, current, me));
       } finally {
         analyzingProfiles.delete(me);
       }
@@ -424,7 +425,7 @@ export function createApp(db = openDb()) {
   app.post(
     "/api/profile/analyze",
     wrap(async (req, res) => {
-      const { s, me } = auth(req);
+      const { s, me } = await auth(req);
       active(s);
       const sources = (s.sources[me] || []).filter(
         (source) => source.kind !== "manual",
@@ -440,7 +441,7 @@ export function createApp(db = openDb()) {
       analyzingProfiles.add(me);
       try {
         const result = await extract(sources);
-        const current = getSession(db, s.id)!;
+        const current = (await getSession(db, s.id))!;
         active(current);
         const latestSources = (current.sources[me] || []).filter(
           (source) => source.kind !== "manual",
@@ -465,8 +466,8 @@ export function createApp(db = openDb()) {
           result.notice ||
             `${result.interests.length} interests suggested from your saved profile. Review and approve what fits; existing approved interests are preserved.`,
         );
-        touch(current, "profile.analyzed");
-        res.json(snapshot(db, current, me));
+        await touch(current, "profile.analyzed");
+        res.json(await snapshot(db, current, me));
       } finally {
         analyzingProfiles.delete(me);
       }
@@ -474,37 +475,33 @@ export function createApp(db = openDb()) {
   );
   app.delete(
     "/api/profile",
-    wrap((req, res) => {
-      const { s, me } = auth(req);
-      db.prepare("DELETE FROM connections WHERE player_id=?").run(me);
-      db.prepare("DELETE FROM oauth WHERE player_id=?").run(me);
+    wrap(async (req, res) => {
+      const { s, me } = await auth(req);
+      await db.prepare("DELETE FROM connections WHERE player_id=?").run(me);
+      await db.prepare("DELETE FROM oauth WHERE player_id=?").run(me);
       delete s.sources[me];
       s.profileRevisions ??= {};
       s.profileRevisions[me] = (s.profileRevisions[me] || 0) + 1;
       s.players.find((p) => p.id === me)!.interests = [];
       s.recommendations = [];
       notice(s, me, undefined);
-      touch(s, "profile.deleted");
-      res.json(snapshot(db, s, me));
+      await touch(s, "profile.deleted");
+      res.json(await snapshot(db, s, me));
     }),
   );
   app.get(
     "/api/instagram/connect",
-    wrap((req, res) => {
-      const { s, me } = auth(req);
+    wrap(async (req, res) => {
+      const { s, me } = await auth(req);
       active(s);
       if (!instagramReady()) return res.redirect("/?connection=setup");
       const state = randomBytes(32).toString("hex");
-      db.prepare("DELETE FROM oauth WHERE expires_at<? OR player_id=?").run(
-        Date.now(),
-        me,
-      );
-      db.prepare("INSERT INTO oauth VALUES(?,?,?,?)").run(
-        state,
-        me,
-        s.id,
-        Date.now() + 600000,
-      );
+      await db
+        .prepare("DELETE FROM oauth WHERE expires_at<? OR player_id=?")
+        .run(Date.now(), me);
+      await db
+        .prepare("INSERT INTO oauth VALUES(?,?,?,?)")
+        .run(state, me, s.id, Date.now() + 600000);
       const url = new URL("https://www.instagram.com/oauth/authorize");
       url.search = new URLSearchParams({
         client_id: process.env.INSTAGRAM_APP_ID!,
@@ -519,14 +516,14 @@ export function createApp(db = openDb()) {
   app.get(
     "/api/instagram/callback",
     wrap(async (req, res) => {
-      const { s, me } = auth(req);
+      const { s, me } = await auth(req);
       active(s);
       const state = typeof req.query.state === "string" ? req.query.state : "";
-      const record = db
+      const record = await db
         .prepare("SELECT * FROM oauth WHERE state=?")
-        .get(state) as
-        | { player_id: string; session_id: string; expires_at: number }
-        | undefined;
+        .get<{ player_id: string; session_id: string; expires_at: number }>(
+          state,
+        );
       if (
         !record ||
         record.player_id !== me ||
@@ -534,7 +531,7 @@ export function createApp(db = openDb()) {
         record.expires_at < Date.now()
       )
         return res.redirect("/?connection=invalid");
-      db.prepare("DELETE FROM oauth WHERE state=?").run(state);
+      await db.prepare("DELETE FROM oauth WHERE state=?").run(state);
       if (req.query.error) return res.redirect("/?connection=denied");
       if (typeof req.query.code !== "string")
         return res.redirect("/?connection=invalid");
@@ -547,13 +544,15 @@ export function createApp(db = openDb()) {
           profile.sources,
           `Connected @${profile.username || "Instagram"}. Available: ${profile.available.join(", ") || "identity only"}. Unavailable: ${profile.unavailable.join(", ") || "none"}.`,
         );
-        db.prepare("INSERT OR REPLACE INTO connections VALUES(?,?,?,?)").run(
-          me,
-          s.id,
-          encrypt(token.token),
-          Date.now() + token.expiresIn * 1000,
-        );
-        touch(current, "profile.connected");
+        await db
+          .prepare("INSERT OR REPLACE INTO connections VALUES(?,?,?,?)")
+          .run(
+            me,
+            s.id,
+            encrypt(token.token),
+            Date.now() + token.expiresIn * 1000,
+          );
+        await touch(current, "profile.connected");
         return res.redirect("/?connection=success");
       } catch {
         return res.redirect("/?connection=failed");
@@ -561,19 +560,21 @@ export function createApp(db = openDb()) {
     }),
   );
   const questionsCookie = "destina_questions";
-  function allowQuestions(
+  async function allowQuestions(
     res: Response,
     sessionId: string,
     permission: "read" | "control" = "read",
   ) {
     const token = randomBytes(32).toString("hex");
     const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
-    db.prepare("DELETE FROM questions_access WHERE expires_at<?").run(
-      Date.now(),
-    );
-    db.prepare(
-      "INSERT INTO questions_access(token,session_id,expires_at,permission) VALUES(?,?,?,?)",
-    ).run(tokenHash(token), sessionId, expiresAt, permission);
+    await db
+      .prepare("DELETE FROM questions_access WHERE expires_at<?")
+      .run(Date.now());
+    await db
+      .prepare(
+        "INSERT INTO questions_access(token,session_id,expires_at,permission) VALUES(?,?,?,?)",
+      )
+      .run(tokenHash(token), sessionId, expiresAt, permission);
     res.cookie(questionsCookie, token, {
       httpOnly: true,
       sameSite: "strict",
@@ -582,19 +583,21 @@ export function createApp(db = openDb()) {
       maxAge: 12 * 60 * 60 * 1000,
     });
   }
-  function questionsRoom(req: Request, write = false) {
-    if (demoMode) return demoRoom();
+  async function questionsRoom(req: Request, write = false) {
+    if (demoMode) return await demoRoom();
     const token = req.cookies[questionsCookie];
     const record =
       typeof token === "string"
-        ? (db
+        ? await db
             .prepare(
               "SELECT session_id,permission FROM questions_access WHERE token=? AND expires_at>?",
             )
-            .get(tokenHash(token), Date.now()) as
-            { session_id: string; permission: string } | undefined)
+            .get<{ session_id: string; permission: string }>(
+              tokenHash(token),
+              Date.now(),
+            )
         : undefined;
-    const s = record && getSession(db, record.session_id);
+    const s = record && (await getSession(db, record.session_id));
     if (!s)
       throw Object.assign(new Error("Private Game Master access required."), {
         status: 401,
@@ -606,16 +609,16 @@ export function createApp(db = openDb()) {
       );
     return s;
   }
-  function privateFeed(req: Request, s: Session) {
-    const record = db
+  async function privateFeed(req: Request, s: Session) {
+    const record = await db
       .prepare(
         "SELECT permission FROM questions_access WHERE token=? AND expires_at>?",
       )
-      .get(
+      .get<{ permission: string }>(
         tokenHash(String(req.cookies[questionsCookie] || "")),
         Date.now(),
-      ) as { permission: string } | undefined;
-    return questionsSnapshot(
+      );
+    return await questionsSnapshot(
       s,
       generating.has(s.id),
       demoMode || record?.permission === "control",
@@ -624,25 +627,27 @@ export function createApp(db = openDb()) {
   }
   app.post(
     "/api/questions/access",
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       const { token } = z
         .object({ token: z.string().length(64) })
         .parse(req.body);
-      const record = db
+      const record = await db
         .prepare(
           "DELETE FROM questions_invites WHERE token=? AND expires_at>? RETURNING session_id,permission",
         )
-        .get(tokenHash(token), Date.now()) as
-        { session_id: string; permission: "read" | "control" } | undefined;
-      const s = record && getSession(db, record.session_id);
+        .get<{ session_id: string; permission: "read" | "control" }>(
+          tokenHash(token),
+          Date.now(),
+        );
+      const s = record && (await getSession(db, record.session_id));
       if (!s)
         return res.status(401).json({
           error:
             "This access link expired or was already used. Request a new link.",
         });
-      allowQuestions(res, s.id, record!.permission);
+      await allowQuestions(res, s.id, record!.permission);
       res.json(
-        questionsSnapshot(
+        await questionsSnapshot(
           s,
           generating.has(s.id),
           record!.permission === "control",
@@ -653,7 +658,7 @@ export function createApp(db = openDb()) {
   );
   app.post(
     "/api/questions/login",
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       const { key, code } = z
         .object({ key: z.string().min(1).max(512), code: z.string().length(6) })
         .parse(req.body);
@@ -669,19 +674,19 @@ export function createApp(db = openDb()) {
           error:
             "The room code or access key could not be verified. You can also use a private access link.",
         });
-      const s = getSession(db, code.toUpperCase());
+      const s = await getSession(db, code.toUpperCase());
       if (!s)
         return res.status(403).json({
           error: "The room code or access key could not be verified.",
         });
-      allowQuestions(res, s.id, "control");
-      res.json(questionsSnapshot(s, generating.has(s.id), true, db));
+      await allowQuestions(res, s.id, "control");
+      res.json(await questionsSnapshot(s, generating.has(s.id), true, db));
     }),
   );
   app.get(
     "/api/questions/session",
-    wrap((req, res) => {
-      const s = questionsRoom(req);
+    wrap(async (req, res) => {
+      const s = await questionsRoom(req);
       if (
         !demoMode &&
         req.query.room &&
@@ -691,17 +696,17 @@ export function createApp(db = openDb()) {
           error:
             "Your access is for another room. Open its private link or sign in again.",
         });
-      res.json(privateFeed(req, s));
+      res.json(await privateFeed(req, s));
     }),
   );
   app.delete(
     "/api/questions/session",
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       const token = req.cookies[questionsCookie];
       if (typeof token === "string")
-        db.prepare("DELETE FROM questions_access WHERE token=?").run(
-          tokenHash(token),
-        );
+        await db
+          .prepare("DELETE FROM questions_access WHERE token=?")
+          .run(tokenHash(token));
       res.clearCookie(questionsCookie, {
         path: "/api/questions",
         httpOnly: true,
@@ -728,21 +733,20 @@ export function createApp(db = openDb()) {
       "/api/questions/invite",
     ],
     (req, res, next) => {
-      try {
-        req.params.code = questionsRoom(req, true).code;
-        (req as Request & { controlRoom?: string }).controlRoom =
-          req.params.code;
-        next();
-      } catch (e) {
-        next(e);
-      }
+      void questionsRoom(req, true)
+        .then((s) => {
+          req.params.code = s.code;
+          (req as Request & { controlRoom?: string }).controlRoom = s.code;
+          next();
+        })
+        .catch(next);
     },
   );
   app.post(
     "/api/questions/invite",
-    wrap((req, res) => {
-      const s = questionsRoom(req, true);
-      res.json(questionsAccess(db, s, "control"));
+    wrap(async (req, res) => {
+      const s = await questionsRoom(req, true);
+      res.json(await questionsAccess(db, s, "control"));
     }),
   );
   // The Vision Pro transport will call these operations later. Player cookies grant no control access.
@@ -767,9 +771,9 @@ export function createApp(db = openDb()) {
   });
   app.post(
     "/api/control/rooms",
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       const input = z.object({ name: text }).parse(req.body);
-      const s = createRoom(db, input.name);
+      const s = await createRoom(db, input.name);
       res.status(201).json({
         ...controlSnapshot(s),
         joinPath: `/join/${s.code}`,
@@ -782,24 +786,24 @@ export function createApp(db = openDb()) {
   );
   app.post(
     "/api/control/rooms/:code/questions-access",
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       const { permission } = z
         .object({ permission: z.enum(["read", "control"]).default("read") })
         .parse(req.body || {});
-      res.json(questionsAccess(db, room(req), permission));
+      res.json(await questionsAccess(db, await room(req), permission));
     }),
   );
   app.get(
     "/api/control/rooms/:code",
-    wrap((req, res) => res.json(controlSnapshot(room(req)))),
+    wrap(async (req, res) => res.json(controlSnapshot(await room(req)))),
   );
   // The full Game Master feed over bearer auth. controlSnapshot is deliberately
   // thin; a headset Game Master needs the same view the browser at /gm has.
   app.get(
     "/api/control/rooms/:code/questions",
-    wrap((req, res) => {
-      const s = room(req);
-      res.json(questionsSnapshot(s, generating.has(s.id), true, db));
+    wrap(async (req, res) => {
+      const s = await room(req);
+      res.json(await questionsSnapshot(s, generating.has(s.id), true, db));
     }),
   );
 
@@ -809,7 +813,7 @@ export function createApp(db = openDb()) {
       "/api/questions/recommendations",
     ],
     wrap(async (req, res) => {
-      const s = room(req);
+      const s = await room(req);
       active(s);
       if (activeQuestion(s))
         return res.status(409).json({
@@ -858,7 +862,7 @@ export function createApp(db = openDb()) {
         });
       }
       s.context = input.context;
-      touch(s, "recommendations.requested");
+      await touch(s, "recommendations.requested");
       const baseline = JSON.stringify({
         players: s.players,
         rounds: s.rounds,
@@ -880,7 +884,7 @@ export function createApp(db = openDb()) {
             : await recommend(s, input.targetPlayerId, conversation, () =>
                 reserveSessionRequest(db, s.id),
               );
-        const current = getSession(db, s.id)!;
+        const current = (await getSession(db, s.id))!;
         if (
           current.status === "finished" ||
           JSON.stringify({
@@ -911,7 +915,7 @@ export function createApp(db = openDb()) {
           state.generatedRound = current.rounds.length;
           state.summary = result.summary || state.summary;
         }
-        touch(current, "recommendations.ready");
+        await touch(current, "recommendations.ready");
         res.json(controlSnapshot(current));
       } finally {
         generating.delete(s.id);
@@ -920,8 +924,8 @@ export function createApp(db = openDb()) {
   );
   app.post(
     ["/api/control/rooms/:code/assign", "/api/questions/assign"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       const input = z
         .object({
@@ -960,14 +964,14 @@ export function createApp(db = openDb()) {
       });
       s.status = "active";
       s.recommendations = [];
-      touch(s, "question.assigned");
+      await touch(s, "question.assigned");
       res.json(controlSnapshot(s));
     }),
   );
   app.post(
     ["/api/control/rooms/:code/clear", "/api/questions/clear"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       const { status } = z
         .object({
@@ -984,7 +988,7 @@ export function createApp(db = openDb()) {
       for (const p of s.players)
         if (question.recommendation.participants.includes(p.id))
           p.participation++;
-      touch(s, "question.cleared");
+      await touch(s, "question.cleared");
       res.json(controlSnapshot(s));
       if (
         s.conversation?.automatic &&
@@ -1005,7 +1009,7 @@ export function createApp(db = openDb()) {
             const result = await recommend(s, undefined, input, () =>
               reserveSessionRequest(db, s.id),
             );
-            const current = getSession(db, s.id)!;
+            const current = (await getSession(db, s.id))!;
             if (
               current.status === "finished" ||
               activeQuestion(current) ||
@@ -1032,7 +1036,7 @@ export function createApp(db = openDb()) {
             c.summary = result.summary || c.summary;
             c.consumedSequence = consumed;
             c.generatedRound = current.rounds.length;
-            touch(current, "recommendations.ready");
+            await touch(current, "recommendations.ready");
           } finally {
             generating.delete(s.id);
           }
@@ -1043,9 +1047,9 @@ export function createApp(db = openDb()) {
   );
   app.post(
     ["/api/control/rooms/:code/reset", "/api/questions/reset"],
-    wrap((req, res) => {
+    wrap(async (req, res) => {
       z.object({ confirm: z.literal(true) }).parse(req.body);
-      const s = room(req);
+      const s = await room(req);
       if (
         generating.has(s.id) ||
         rewards.isSettling(s) ||
@@ -1061,7 +1065,7 @@ export function createApp(db = openDb()) {
         id: s.id,
         code: s.code,
         name: s.name,
-        version: getSession(db, s.id)!.version,
+        version: (await getSession(db, s.id))!.version,
         status: "lobby",
         players: [],
         recommendations: [],
@@ -1069,8 +1073,8 @@ export function createApp(db = openDb()) {
         sources: {},
         context: "",
       };
-      db.transaction(() => {
-        rewards.archive(s);
+      await db.transaction(async (tx) => {
+        await rewards.archive(s, tx);
         for (const table of [
           "credentials",
           "connections",
@@ -1079,9 +1083,9 @@ export function createApp(db = openDb()) {
           "questions_invites",
           "events",
         ])
-          db.prepare(`DELETE FROM ${table} WHERE session_id=?`).run(s.id);
-        touch(fresh, "game.reset");
-      })();
+          await tx.prepare(`DELETE FROM ${table} WHERE session_id=?`).run(s.id);
+      });
+      await touch(fresh, "game.reset");
       res.json({ ok: true });
     }),
   );
@@ -1090,10 +1094,10 @@ export function createApp(db = openDb()) {
       "/api/questions/rewards/approve",
       "/api/control/rooms/:code/rewards/approve",
     ],
-    wrap((req, res) => {
-      const s = room(req);
-      rewards.approve(s, req.body);
-      touch(s, "rewards.approved");
+    wrap(async (req, res) => {
+      const s = await room(req);
+      await rewards.approve(s, req.body);
+      await touch(s, "rewards.approved");
       res.json({ ok: true });
     }),
   );
@@ -1102,10 +1106,10 @@ export function createApp(db = openDb()) {
       "/api/questions/rewards/settings",
       "/api/control/rooms/:code/rewards/settings",
     ],
-    wrap((req, res) => {
-      const s = room(req);
-      rewards.configure(s, req.body);
-      touch(s, "rewards.settings");
+    wrap(async (req, res) => {
+      const s = await room(req);
+      await rewards.configure(s, req.body);
+      await touch(s, "rewards.settings");
       res.json({ ok: true });
     }),
   );
@@ -1114,19 +1118,21 @@ export function createApp(db = openDb()) {
       "/api/questions/rewards/settle",
       "/api/control/rooms/:code/rewards/settle",
     ],
-    wrap((req, res) => {
-      const s = room(req);
-      rewards.settle(s, req.body, () => {
-        const current = getSession(db, s.id);
-        if (current) touch(current, "rewards.settled");
+    wrap(async (req, res) => {
+      const s = await room(req);
+      await rewards.settle(s, req.body, () => {
+        void (async () => {
+          const current = await getSession(db, s.id);
+          if (current) await touch(current, "rewards.settled");
+        })();
       });
       res.status(202).json({ ok: true });
     }),
   );
   app.post(
     ["/api/control/rooms/:code/finish", "/api/questions/finish"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       audio.stop(s.id);
       s.conversation = undefined;
@@ -1137,15 +1143,15 @@ export function createApp(db = openDb()) {
       const question = activeQuestion(s);
       if (question) question.status = "passed";
       for (const p of s.players) for (const i of p.interests) i.sourceIds = [];
-      db.prepare("DELETE FROM oauth WHERE session_id=?").run(s.id);
-      touch(s, "room.closed");
+      await db.prepare("DELETE FROM oauth WHERE session_id=?").run(s.id);
+      await touch(s, "room.closed");
       res.json(controlSnapshot(s));
     }),
   );
   app.post(
     ["/api/questions/conversation", "/api/control/rooms/:code/conversation"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       const input = z
         .object({
@@ -1166,18 +1172,18 @@ export function createApp(db = openDb()) {
         c.speakerLinks = {};
         c.dismissedSpeakerHints = [];
       }
-      touch(s, "conversation.updated");
+      await touch(s, "conversation.updated");
       res.json({ ok: true });
     }),
   );
   app.post(
     ["/api/questions/transcript", "/api/control/rooms/:code/transcript"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       const input = segmentInput.parse(req.body);
       const changed = appendTranscript(s, input, "test");
-      if (changed) touch(s, "transcript.appended");
+      if (changed) await touch(s, "transcript.appended");
       res.json({ ok: true, duplicate: !changed });
     }),
   );
@@ -1187,7 +1193,7 @@ export function createApp(db = openDb()) {
   app.get(
     ["/api/questions/transcript", "/api/control/rooms/:code/transcript"],
     wrap(async (req, res) => {
-      const s = room(req);
+      const s = await room(req);
       const since = Number(req.query.since);
       const sinceAt =
         Number.isSafeInteger(since) && since > 0 ? since : undefined;
@@ -1215,8 +1221,8 @@ export function createApp(db = openDb()) {
   );
   app.post(
     ["/api/questions/speaker", "/api/control/rooms/:code/speaker"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       if (generating.has(s.id))
         return res.status(409).json({
@@ -1255,14 +1261,14 @@ export function createApp(db = openDb()) {
       }
       if (playerId) c.speakerLinks[speakerLabel] = playerId;
       else delete c.speakerLinks[speakerLabel];
-      touch(s, "speaker.mapped");
+      await touch(s, "speaker.mapped");
       res.json({ ok: true });
     }),
   );
   app.post(
     ["/api/questions/audio-ticket", "/api/control/rooms/:code/audio-ticket"],
-    wrap((req, res) => {
-      const s = room(req);
+    wrap(async (req, res) => {
+      const s = await room(req);
       active(s);
       const { consent, format } = z
         .object({

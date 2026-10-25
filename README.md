@@ -13,7 +13,7 @@ A phone that has not joined a room must onboard through the bot QR (or enter its
 
 ## Run locally
 
-Requires Node.js 20.19+ and npm. SQLite initializes automatically.
+Requires Node.js 20.19+ and npm, plus a TigerDB (TimescaleDB) service. Set `TIGER_DATABASE_URL` and run `npm run tigerdb:migrate` once; the server creates any missing tables on start.
 
 ```sh
 npm install
@@ -32,7 +32,7 @@ npm start
 
 `npm run dev` serves the frontend and backend at **http://localhost:3000**, with Vite and server hot reload. `npm start` serves the production build. Set `PORT` to change the port. Format with `npm run format`.
 
-SQLite lives in the ignored `data/centerpiece.db`; change `DATABASE_PATH` to override it. Existing JSON session records are preserved; obsolete score/GM fields are no longer exposed. The new player UI does not expose old game dashboards or sample-player controls.
+All state lives in TigerDB, configured by `TIGER_DATABASE_URL`; there is no local database file. See [TigerDB store](docs/tigerdb.md). Existing JSON session records are preserved; obsolete score/GM fields are no longer exposed. The new player UI does not expose old game dashboards or sample-player controls.
 
 ## Player profile flow
 
@@ -140,12 +140,12 @@ Player cookies are HTTP-only, SameSite=Lax, and Secure for an HTTPS `PUBLIC_URL`
 ## Source layout and verification
 
 - `src/`: player onboarding, profile review, ready state, and universal relic view; mobile controls and reduced-motion styles.
-- `server/`: HTTP operations, SQLite, Instagram, encryption, Meta generation, room state, and future transport event boundary.
+- `server/`: HTTP operations, TigerDB storage, Instagram, encryption, Meta generation, room state, and future transport event boundary.
 - `shared/types.ts`: player/control contracts.
 - `scripts/room.ts`: local room provisioning; the bot can later use the control API instead.
 - `tests/`: shared URL behavior, target privacy, room isolation, control authorization, source review, persistence, provider failures, target selection, OAuth states, encryption, stale candidates, and room closure.
 
-Raw profile text is removed when its owner deletes it or the room closes. Approved interests and prior assigned prompts remain in the room's internal history to support generation; deleting a profile does not rewrite questions already assigned. SQLite uses versioned JSON room aggregates plus credential, connection, OAuth, and event tables. No extra migration is needed for the local prototype. Keep the database and encryption key together if backing up data.
+Raw profile text is removed when its owner deletes it or the room closes. Approved interests and prior assigned prompts remain in the room's internal history to support generation; deleting a profile does not rewrite questions already assigned. TigerDB holds versioned JSON room aggregates plus credential, connection, OAuth, and event tables, and the transcript hypertable. `npm run tigerdb:migrate` is idempotent and safe to re-run. Keep the database and encryption key together if backing up data.
 
 ### Private question review and Muse credit limits
 
@@ -160,7 +160,7 @@ This developer preview does not assign questions or replace Vision Pro controls.
 
 All model calls now reserve a persistent request slot before sending. The default
 `MODEL_MAX_REQUESTS=100` counts extraction, generation, repairs, and failed sends
-from this point forward. `MODEL_USAGE_PATH` stores the durable local ledger.
+from this point forward. The ledger is the `model_usage` table in TigerDB.
 Reaching the cap uses the existing manual-interest/template fallback. The cap
 cannot guarantee a dollar amount; provider billing is authoritative, and it does
 not include earlier usage or other applications. Do not delete the ledger to

@@ -1,15 +1,16 @@
-import type { Pool } from "pg";
+import { tigerPool } from "./db";
 import type { TranscriptSegment } from "../shared/types";
 
 /**
- * Optional TigerDB (TimescaleDB) transcript store.
+ * The transcript view of TigerDB (TimescaleDB).
  *
- * SQLite remains the source of truth for the game. This layer is a parallel
- * time-series record so the transcript can be queried by time and speaker, and
- * so a polling client (the Vision Pro Game Master) can ask for only what is new.
+ * Game state and the transcript now share one store, so this module no longer
+ * owns a connection: it borrows the server's pool from db.ts. What stays its
+ * own is the time-series shape - a hypertable queried by time and speaker, so a
+ * polling client (the Vision Pro Game Master) can ask for only what is new.
  *
- * Every function is a no-op when TIGER_DATABASE_URL is unset, and no failure
- * here may ever fail a transcript write or an HTTP request.
+ * A failure here still must never fail a transcript write or an HTTP request:
+ * the session copy in `sessions.body` remains the fallback the reader uses.
  *
  * Never log the connection string, the host, or a raw driver error.
  */
@@ -20,35 +21,15 @@ export type SpeakerActivity = {
   words: number;
 };
 
-let pool: Pool | undefined;
-let unavailable = false;
-
 export function tigerEnabled() {
-  return !!process.env.TIGER_DATABASE_URL && !unavailable;
+  return !!process.env.TIGER_DATABASE_URL;
 }
 
-/** Lazily built so a server with no TigerDB configured never loads the driver. */
-async function tigerPool() {
-  if (!tigerEnabled()) return undefined;
-  if (pool) return pool;
+function pool() {
   try {
-    const pg = await import("pg");
-    pool = new pg.default.Pool({
-      connectionString: process.env.TIGER_DATABASE_URL,
-      ssl:
-        process.env.TIGER_SSL_MODE === "disable"
-          ? undefined
-          : { rejectUnauthorized: true },
-      max: 4,
-      connectionTimeoutMillis: 5000,
-      idle_in_transaction_session_timeout: 10000,
-    });
-    // A pool-level error listener keeps a dropped backend from crashing Node.
-    pool.on("error", () => report("pool"));
-    return pool;
+    return tigerPool();
   } catch {
     report("connect");
-    unavailable = true;
     return undefined;
   }
 }
@@ -68,7 +49,7 @@ function words(text: string) {
 export function recordSegments(roomId: string, segments: TranscriptSegment[]) {
   if (!tigerEnabled() || !segments.length) return;
   void (async () => {
-    const client = await tigerPool();
+    const client = pool();
     if (!client) return;
     const columns = 9;
     const values: unknown[] = [];
@@ -106,7 +87,7 @@ export async function readSegments(
   roomId: string,
   options: { since?: number; limit?: number } = {},
 ) {
-  const client = await tigerPool();
+  const client = pool();
   if (!client) return undefined;
   const limit = Math.min(Math.max(options.limit || 100, 1), 400);
   try {
@@ -135,7 +116,7 @@ export async function readSegments(
 
 /** Reads the continuous aggregate. Powers the "who has been talking" meter. */
 export async function speakerActivity(roomId: string, minutes = 20) {
-  const client = await tigerPool();
+  const client = pool();
   if (!client) return [];
   try {
     const result = await client.query(
@@ -159,8 +140,8 @@ export async function speakerActivity(roomId: string, minutes = 20) {
   }
 }
 
-export async function closeTiger() {
-  const current = pool;
-  pool = undefined;
-  if (current) await current.end().catch(() => report("close"));
-}
+/**
+ * The pool belongs to db.ts; closing the database closes this too. Kept as a
+ * no-op so callers that shut the transcript store down explicitly still work.
+ */
+export async function closeTiger() {}

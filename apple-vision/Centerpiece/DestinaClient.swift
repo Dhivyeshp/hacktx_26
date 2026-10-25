@@ -143,8 +143,8 @@ final class DestinaClient {
         lastSegmentAt = transcript.last?.at
     }
 
-    /// Speaker names are confirmed in SQLite, not in the time-series store, so
-    /// they are resolved from the feed rather than from the transcript rows.
+    /// Speaker names are confirmed in the session body, not in the transcript
+    /// hypertable, so they are resolved from the feed rather than from the rows.
     func speakerName(for segment: TranscriptSegment) -> String? {
         if let id = segment.speakerId, let name = feed?.name(for: id) { return name }
         guard let label = segment.speakerLabel else { return nil }

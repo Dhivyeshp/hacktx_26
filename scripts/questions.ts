@@ -13,9 +13,9 @@ if (!code)
   throw new Error(
     "Usage: npm run questions -- ROOMCODE [--sample] [--live] [--serve]",
   );
-const db = openDb();
-const room = getSession(db, code);
-db.close();
+const db = await openDb();
+const room = await getSession(db, code);
+await db.close();
 if (!room) throw new Error("Room not found");
 const s = structuredClone(room);
 s.players = s.players.filter((p) => p.interests.some((i) => i.approved));

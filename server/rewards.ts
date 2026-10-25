@@ -7,7 +7,7 @@ import {
   type RewardsSnapshot,
   type PlayerRewards,
 } from "../shared/rewards";
-import { getSession, type DB, type Session } from "./db";
+import type { DB, Session } from "./db";
 import { encrypt } from "./security";
 
 export const rewardGameId = (s: Session) => s.rewardGameId || s.id;
@@ -50,27 +50,31 @@ type Job = {
   error?: string;
 };
 type Receipt = { playerId: string; points: number; signature?: string };
-function settings(db: DB, s: Session) {
+async function settings(db: DB, s: Session) {
   return (
-    (db
+    (await db
       .prepare("SELECT * FROM reward_settings WHERE game_id=?")
-      .get(rewardGameId(s)) as
-      { goal: number; paused: number; celebrated: number } | undefined) || {
-      goal: 40,
-      paused: 0,
-      celebrated: 0,
-    }
+      .get<{ goal: number; paused: number; celebrated: number }>(
+        rewardGameId(s),
+      )) || { goal: 40, paused: 0, celebrated: 0 }
   );
 }
-export function rewardsSnapshot(db: DB, s: Session): RewardsSnapshot {
+export async function rewardsSnapshot(
+  db: DB,
+  s: Session,
+): Promise<RewardsSnapshot> {
   const gameId = rewardGameId(s),
-    config = settings(db, s);
-  const reviews = db
+    config = await settings(db, s);
+  const reviews = await db
     .prepare("SELECT round_id,awards FROM reward_reviews WHERE game_id=?")
-    .all(gameId) as { round_id: string; awards: string }[];
-  const jobs = db
+    .all<{ round_id: string; awards: string }>(gameId);
+  const jobs = await db
     .prepare("SELECT * FROM reward_jobs WHERE game_id=?")
-    .all(gameId) as Job[];
+    .all<Job>(gameId);
+  // Read every wallet for the table once rather than once per player.
+  const wallets = await db
+    .prepare("SELECT player_id,wallet FROM reward_wallets")
+    .all<{ player_id: string; wallet: string }>();
   const rounds = s.rounds
     .filter((r) => r.status !== "assigned")
     .map((r) => {
@@ -116,9 +120,7 @@ export function rewardsSnapshot(db: DB, s: Session): RewardsSnapshot {
         r.recommendation.participants.filter((id) => id !== p.id),
       ),
     ).size;
-    const wallet = db
-      .prepare("SELECT wallet FROM reward_wallets WHERE player_id=?")
-      .get(p.id) as { wallet: string } | undefined;
+    const wallet = wallets.find((row) => row.player_id === p.id);
     return {
       playerId: p.id,
       approved,
@@ -161,8 +163,12 @@ export function rewardsSnapshot(db: DB, s: Session): RewardsSnapshot {
     suggestions: s.rewardSuggestions || [],
   };
 }
-export function playerRewards(db: DB, s: Session, id: string): PlayerRewards {
-  const all = rewardsSnapshot(db, s),
+export async function playerRewards(
+  db: DB,
+  s: Session,
+  id: string,
+): Promise<PlayerRewards> {
+  const all = await rewardsSnapshot(db, s),
     p = all.players.find((p) => p.playerId === id)!;
   return {
     currency: all.currency,
@@ -182,15 +188,23 @@ export function playerRewards(db: DB, s: Session, id: string): PlayerRewards {
 
 export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
   const busy = new Set<string>();
-  function audit(s: Session, kind: string, body: unknown, roundId?: string) {
-    db.prepare("INSERT INTO reward_audit VALUES(?,?,?,?,?,?)").run(
-      randomUUID(),
-      rewardGameId(s),
-      roundId || null,
-      kind,
-      JSON.stringify(body),
-      Date.now(),
-    );
+  async function audit(
+    on: DB,
+    s: Session,
+    kind: string,
+    body: unknown,
+    roundId?: string,
+  ) {
+    await on
+      .prepare("INSERT INTO reward_audit VALUES(?,?,?,?,?,?)")
+      .run(
+        randomUUID(),
+        rewardGameId(s),
+        roundId || null,
+        kind,
+        JSON.stringify(body),
+        Date.now(),
+      );
   }
   async function chain(path: string, body?: unknown): Promise<any> {
     if (!configured())
@@ -227,15 +241,15 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
       );
     return response.json();
   }
-  function approve(s: Session, input: unknown) {
-    const config = settings(db, s);
+  async function approve(s: Session, input: unknown) {
+    const config = await settings(db, s);
     if (config.paused) fail("Awards are paused. Resume them first.");
     const data = reviewSchema.parse(input),
       round = s.rounds.find((r) => r.id === data.roundId);
     if (!round || round.status === "assigned")
       fail("Complete or pass the round before reviewing awards.");
     if (
-      db
+      await db
         .prepare("SELECT 1 FROM reward_jobs WHERE game_id=? AND round_id=?")
         .get(rewardGameId(s), data.roundId)
     )
@@ -282,14 +296,16 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
           .reduce((n, c) => n + c.points, 0),
       };
     });
-    db.transaction(() => {
-      db.prepare(
-        "INSERT INTO reward_reviews VALUES(?,?,?,?) ON CONFLICT(game_id,round_id) DO UPDATE SET awards=excluded.awards,updated_at=excluded.updated_at",
-      ).run(rewardGameId(s), data.roundId, JSON.stringify(awards), Date.now());
-      audit(s, "awards.approved", awards, data.roundId);
-    })();
+    await db.transaction(async (tx) => {
+      await tx
+        .prepare(
+          "INSERT INTO reward_reviews VALUES(?,?,?,?) ON CONFLICT(game_id,round_id) DO UPDATE SET awards=excluded.awards,updated_at=excluded.updated_at",
+        )
+        .run(rewardGameId(s), data.roundId, JSON.stringify(awards), Date.now());
+      await audit(tx, s, "awards.approved", awards, data.roundId);
+    });
   }
-  function configure(s: Session, input: unknown) {
+  async function configure(s: Session, input: unknown) {
     const data = z
       .object({
         goal: z.number().int().min(10).max(1000).optional(),
@@ -297,41 +313,49 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
         celebrated: z.boolean().optional(),
       })
       .parse(input);
-    const before = settings(db, s),
+    const before = await settings(db, s),
       gameId = rewardGameId(s);
     if (
       data.goal !== undefined &&
       data.goal !== before.goal &&
-      db.prepare("SELECT 1 FROM reward_jobs WHERE game_id=?").get(gameId)
+      (await db
+        .prepare("SELECT 1 FROM reward_jobs WHERE game_id=?")
+        .get(gameId))
     )
       fail("The table goal is fixed once settlement has started.");
     if (
       data.celebrated &&
-      rewardsSnapshot(db, s).approved < (data.goal || before.goal)
+      (await rewardsSnapshot(db, s)).approved < (data.goal || before.goal)
     )
       fail("Reach the shared goal before celebrating.");
-    db.prepare("INSERT OR REPLACE INTO reward_settings VALUES(?,?,?,?)").run(
-      gameId,
-      data.goal ?? before.goal,
-      data.paused === undefined ? before.paused : Number(data.paused),
-      data.celebrated === undefined
-        ? before.celebrated
-        : Number(data.celebrated),
-    );
-    audit(s, "settings.updated", data);
+    await db
+      .prepare(
+        "INSERT INTO reward_settings VALUES(?,?,?,?) ON CONFLICT(game_id) DO UPDATE SET goal=excluded.goal,paused=excluded.paused,celebrated=excluded.celebrated",
+      )
+      .run(
+        gameId,
+        data.goal ?? before.goal,
+        data.paused === undefined ? before.paused : Number(data.paused),
+        data.celebrated === undefined
+          ? before.celebrated
+          : Number(data.celebrated),
+      );
+    await audit(db, s, "settings.updated", data);
   }
   async function wallet(playerId: string) {
-    let row = db
+    let row = await db
       .prepare("SELECT * FROM reward_wallets WHERE player_id=?")
-      .get(playerId) as { wallet: string; registered: number } | undefined;
+      .get<{ wallet: string; registered: number }>(playerId);
     if (!row) {
       const key = Keypair.generate();
       // Persist before registration: a timeout must not create an inaccessible second wallet.
-      db.prepare("INSERT INTO reward_wallets VALUES(?,?,?,0)").run(
-        playerId,
-        key.publicKey.toBase58(),
-        encrypt(Buffer.from(key.secretKey).toString("base64")),
-      );
+      await db
+        .prepare("INSERT INTO reward_wallets VALUES(?,?,?,0)")
+        .run(
+          playerId,
+          key.publicKey.toBase58(),
+          encrypt(Buffer.from(key.secretKey).toString("base64")),
+        );
       row = { wallet: key.publicKey.toBase58(), registered: 0 };
     }
     if (!row.registered) {
@@ -339,9 +363,9 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
       if (registered.wallet !== row.wallet)
         fail("The devnet wallet response did not match.", 502);
       new PublicKey(registered.wallet);
-      db.prepare(
-        "UPDATE reward_wallets SET registered=1 WHERE player_id=?",
-      ).run(playerId);
+      await db
+        .prepare("UPDATE reward_wallets SET registered=1 WHERE player_id=?")
+        .run(playerId);
     }
     return row.wallet;
   }
@@ -351,9 +375,9 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
     changed: () => void,
   ) {
     const gameId = rewardGameId(s);
-    let job = db
+    let job = await db
       .prepare("SELECT * FROM reward_jobs WHERE game_id=? AND round_id=?")
-      .get(gameId, roundId) as Job | undefined;
+      .get<Job>(gameId, roundId);
     try {
       const status = await chain("/status");
       if (
@@ -364,11 +388,11 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
         fail(
           "Settlement is restricted to an initialized Solana devnet service.",
         );
-      const review = db
+      const review = (await db
         .prepare(
           "SELECT awards FROM reward_reviews WHERE game_id=? AND round_id=?",
         )
-        .get(gameId, roundId) as { awards: string };
+        .get<{ awards: string }>(gameId, roundId))!;
       const awards: RewardAward[] = JSON.parse(review.awards);
       if (!job || !JSON.parse(job.payload).awards) {
         const round = s.rounds.find((r) => r.id === roundId)!;
@@ -392,19 +416,21 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
             points: a.points,
             connections: 0,
           });
-        db.prepare(
-          "UPDATE reward_jobs SET payload=? WHERE game_id=? AND round_id=?",
-        ).run(JSON.stringify(payload), gameId, roundId);
-        job = db
+        await db
+          .prepare(
+            "UPDATE reward_jobs SET payload=? WHERE game_id=? AND round_id=?",
+          )
+          .run(JSON.stringify(payload), gameId, roundId);
+        job = (await db
           .prepare("SELECT * FROM reward_jobs WHERE game_id=? AND round_id=?")
-          .get(gameId, roundId) as Job;
+          .get<Job>(gameId, roundId))!;
       }
       const payload = JSON.parse(job.payload);
       const session = await chain(`/sessions/${encodeURIComponent(gameId)}`);
       if (!session)
         await chain("/sessions", {
           sessionId: gameId,
-          goal: settings(db, s).goal,
+          goal: (await settings(db, s)).goal,
           bonusPerPlayer: 0,
         });
       const result = await chain("/rounds/settle", {
@@ -436,18 +462,21 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
       const complete = payload.awards.every((a: any) =>
         receipts.some((r) => r.playerId === a.playerId),
       );
-      db.prepare(
-        "UPDATE reward_jobs SET state=?,results=?,error=? WHERE game_id=? AND round_id=?",
-      ).run(
-        complete ? "confirmed" : "failed",
-        JSON.stringify(receipts),
-        complete
-          ? null
-          : "Some awards are still pending. Retry to reconcile them without paying twice.",
-        gameId,
-        roundId,
-      );
-      audit(
+      await db
+        .prepare(
+          "UPDATE reward_jobs SET state=?,results=?,error=? WHERE game_id=? AND round_id=?",
+        )
+        .run(
+          complete ? "confirmed" : "failed",
+          JSON.stringify(receipts),
+          complete
+            ? null
+            : "Some awards are still pending. Retry to reconcile them without paying twice.",
+          gameId,
+          roundId,
+        );
+      await audit(
+        db,
         s,
         complete ? "settlement.confirmed" : "settlement.partial",
         receipts,
@@ -456,32 +485,34 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
     } catch (error) {
       // Keep provider internals and credentials out of public demo errors.
       if (job)
-        db.prepare(
-          "UPDATE reward_jobs SET state='failed',error=? WHERE game_id=? AND round_id=?",
-        ).run(
-          (error as { status?: number; message?: string }).status
-            ? (error as Error).message
-            : "Settlement is pending. Check the devnet network, wallet encryption and service funding, then retry.",
-          gameId,
-          roundId,
-        );
+        await db
+          .prepare(
+            "UPDATE reward_jobs SET state='failed',error=? WHERE game_id=? AND round_id=?",
+          )
+          .run(
+            (error as { status?: number; message?: string }).status
+              ? (error as Error).message
+              : "Settlement is pending. Check the devnet network, wallet encryption and service funding, then retry.",
+            gameId,
+            roundId,
+          );
       else
-        db.prepare(
-          "INSERT OR REPLACE INTO reward_audit VALUES(?,?,?,?,?,?)",
-        ).run(
-          randomUUID(),
-          gameId,
-          roundId,
-          "settlement.failed",
-          "{}",
-          Date.now(),
-        );
+        await db
+          .prepare("INSERT INTO reward_audit VALUES(?,?,?,?,?,?)")
+          .run(
+            randomUUID(),
+            gameId,
+            roundId,
+            "settlement.failed",
+            "{}",
+            Date.now(),
+          );
     } finally {
       busy.delete(gameId);
       changed();
     }
   }
-  function settle(s: Session, input: unknown, changed: () => void) {
+  async function settle(s: Session, input: unknown, changed: () => void) {
     const { roundId } = z.object({ roundId: z.string() }).parse(input),
       gameId = rewardGameId(s);
     if (!configured())
@@ -489,60 +520,68 @@ export function createRewardEngine(db: DB, fetcher: typeof fetch = fetch) {
         "Configure CHAIN_SERVICE_URL and CHAIN_API_TOKEN on the server first.",
         503,
       );
-    if (settings(db, s).paused) fail("Awards are paused. Resume them first.");
+    if ((await settings(db, s)).paused)
+      fail("Awards are paused. Resume them first.");
     if (busy.has(gameId)) fail("A settlement is already in progress.");
-    const row = db
+    const row = await db
       .prepare(
         "SELECT awards FROM reward_reviews WHERE game_id=? AND round_id=?",
       )
-      .get(gameId, roundId) as { awards: string } | undefined;
+      .get<{ awards: string }>(gameId, roundId);
     if (!row) fail("Approve the round's awards before settling.");
     if (!(JSON.parse(row!.awards) as RewardAward[]).some((a) => a.points > 0))
       fail("This round has no Tina Tokens to settle.");
-    const job = db
+    const job = await db
       .prepare("SELECT * FROM reward_jobs WHERE game_id=? AND round_id=?")
-      .get(gameId, roundId) as Job | undefined;
+      .get<Job>(gameId, roundId);
     if (job?.state === "confirmed") return;
     if (!job) {
       const round = s.rounds.find((r) => r.id === roundId);
       if (!round || round.status === "assigned")
         fail("This round is not ready for settlement.");
-      db.prepare(
-        "INSERT INTO reward_jobs(game_id,round_id,round_no,state,payload) VALUES(?,?,?,'processing','{}')",
-      ).run(gameId, roundId, round!.number);
+      await db
+        .prepare(
+          "INSERT INTO reward_jobs(game_id,round_id,round_no,state,payload) VALUES(?,?,?,'processing','{}')",
+        )
+        .run(gameId, roundId, round!.number);
     }
     busy.add(gameId);
     if (job)
-      db.prepare(
-        "UPDATE reward_jobs SET state='processing',error=NULL WHERE game_id=? AND round_id=?",
-      ).run(gameId, roundId);
-    audit(s, "settlement.requested", {}, roundId);
+      await db
+        .prepare(
+          "UPDATE reward_jobs SET state='processing',error=NULL WHERE game_id=? AND round_id=?",
+        )
+        .run(gameId, roundId);
+    await audit(db, s, "settlement.requested", {}, roundId);
     void runSettlement(s, roundId, changed);
   }
   return {
     approve,
     configure,
     settle,
-    archive: (s: Session) => {
+    /** `on` lets a caller archive inside its own open transaction. */
+    archive: async (s: Session, on: DB = db) => {
       const gameId = rewardGameId(s);
-      const rows = db
+      const rows = await on
         .prepare("SELECT round_id,awards FROM reward_reviews WHERE game_id=?")
-        .all(gameId) as { round_id: string; awards: string }[];
+        .all<{ round_id: string; awards: string }>(gameId);
       for (const row of rows)
-        db.prepare(
-          "UPDATE reward_reviews SET awards=? WHERE game_id=? AND round_id=?",
-        ).run(
-          JSON.stringify(
-            JSON.parse(row.awards).map((a: RewardAward) => ({
-              ...a,
-              note: "",
-              evidenceIds: [],
-            })),
-          ),
-          gameId,
-          row.round_id,
-        );
-      db.prepare("DELETE FROM reward_audit WHERE game_id=?").run(gameId);
+        await on
+          .prepare(
+            "UPDATE reward_reviews SET awards=? WHERE game_id=? AND round_id=?",
+          )
+          .run(
+            JSON.stringify(
+              JSON.parse(row.awards).map((a: RewardAward) => ({
+                ...a,
+                note: "",
+                evidenceIds: [],
+              })),
+            ),
+            gameId,
+            row.round_id,
+          );
+      await on.prepare("DELETE FROM reward_audit WHERE game_id=?").run(gameId);
     },
     isSettling: (s: Session) => busy.has(rewardGameId(s)),
     recover: () =>

@@ -5,11 +5,11 @@ import { questionsAccess } from "../server/questions-access";
 const code = process.argv.slice(2).find((arg) => !arg.startsWith("--"));
 if (!code)
   throw new Error("Usage: npm run questions:link -- ROOM [--control] [--file]");
-const db = openDb();
+const db = await openDb();
 try {
-  const room = getSession(db, code);
+  const room = await getSession(db, code);
   if (!room) throw new Error("Room not found.");
-  const { url } = questionsAccess(
+  const { url } = await questionsAccess(
     db,
     room,
     process.argv.includes("--control") ? "control" : "read",
@@ -27,5 +27,5 @@ try {
       `Private Game Master link (one use, expires in 10 minutes)\n${url}`,
     );
 } finally {
-  db.close();
+  await db.close();
 }

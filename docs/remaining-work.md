@@ -30,7 +30,7 @@ Updated October 25, 2026. This separates working browser features from integrati
 
 - [ ] Complete Meta's required review and access verification for the permissions actually used. Confirm supported account types and keep a clear manual-interest path for unsupported accounts.
 - [ ] Provide published privacy and deletion information, implement the required Meta deauthorization/deletion callbacks and verify retention behavior.
-- [ ] Choose always-on hosting for Express, persistent SQLite storage and backups. The ngrok setup currently needs the laptop, app and tunnel to stay running.
+- [ ] Choose always-on hosting for Express and backups for the TigerDB service. The ngrok setup currently needs the laptop, app and tunnel to stay running.
 - [ ] Configure production secrets, HTTPS origin and callback URLs; verify restart recovery and access expiry in that environment.
 - [ ] Review public-endpoint abuse protection and enforce the Muse request allowance across every deployed generator. The local request cap is not a dollar budget or an account-wide provider spending limit.
 - [ ] Evaluate question quality with representative approved interests, including sparse profiles and similar player names. Use saved batches before paying for another generation.

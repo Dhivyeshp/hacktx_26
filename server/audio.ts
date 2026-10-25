@@ -55,20 +55,19 @@ export function createAudioBridge(
     options,
   ) => new WebSocket(url, options),
 ) {
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS audio_minutes(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,at INTEGER NOT NULL)",
-  );
   const streams = new Map<string, () => void>();
-  const ticket = (sessionId: string, format: "container" | "linear16") => {
+  const ticket = async (
+    sessionId: string,
+    format: "container" | "linear16",
+  ) => {
     const token = randomBytes(32).toString("hex"),
       expiresAt = Date.now() + 60000;
-    db.prepare("DELETE FROM audio_tickets WHERE expires_at<?").run(Date.now());
-    db.prepare("INSERT INTO audio_tickets VALUES(?,?,?,?)").run(
-      tokenHash(token),
-      sessionId,
-      expiresAt,
-      format,
-    );
+    await db
+      .prepare("DELETE FROM audio_tickets WHERE expires_at<?")
+      .run(Date.now());
+    await db
+      .prepare("INSERT INTO audio_tickets VALUES(?,?,?,?)")
+      .run(tokenHash(token), sessionId, expiresAt, format);
     return { token, expiresAt, path: "/api/audio" };
   };
   const stop = (sessionId: string) => streams.get(sessionId)?.();
@@ -103,6 +102,15 @@ export function createAudioBridge(
         () => client.close(1008, "Authenticate first"),
         5000,
       );
+      /**
+       * Every socket event that reads and rewrites the session runs through one
+       * queue. TigerDB is a network hop away, so two overlapping handlers would
+       * otherwise read the same session body and one would lose its segments.
+       */
+      let queue: Promise<unknown> = Promise.resolve();
+      const serial = <T>(work: () => Promise<T>) =>
+        (queue = queue.then(work, work));
+      /** Closes synchronously; the paused notice is written behind the queue. */
       function cleanup(reason = "Listening paused.") {
         if (closed) return;
         closed = true;
@@ -112,35 +120,37 @@ export function createAudioBridge(
         clearTimeout(idle);
         provider?.terminate();
         client.close(1000, "Stopped");
-        if (roomId) {
-          streams.delete(roomId);
-          const s = getSession(db, roomId);
+        if (!roomId) return;
+        const id = roomId;
+        streams.delete(id);
+        void serial(async () => {
+          const s = await getSession(db, id);
           if (s && s.status !== "finished") {
             const c = ensureConversation(s);
             c.status = "paused";
             c.notice = reason;
             s.version++;
-            save(db, s);
+            await save(db, s);
           }
-        }
+        });
       }
-      function reserveMinute() {
+      async function reserveMinute() {
         const limit = Number(process.env.DEEPGRAM_MAX_MINUTES || 30);
         if (!Number.isSafeInteger(limit) || limit < 1)
           throw new Error("Recording allowance exhausted.");
-        db.transaction(() => {
-          const row = db
-            .prepare("SELECT count(*) n FROM audio_minutes WHERE session_id=?")
-            .get(roomId) as { n: number };
+        await db.transaction(async (tx) => {
+          const row = (await tx
+            .prepare(
+              "SELECT count(*)::int AS n FROM audio_minutes WHERE session_id=?",
+            )
+            .get<{ n: number }>(roomId))!;
           if (row.n >= limit) throw new Error("Recording allowance exhausted.");
-          db.prepare("INSERT INTO audio_minutes VALUES(?,?,?)").run(
-            randomUUID(),
-            roomId,
-            Date.now(),
-          );
-        }).immediate();
+          await tx
+            .prepare("INSERT INTO audio_minutes VALUES(?,?,?)")
+            .run(randomUUID(), roomId, Date.now());
+        });
       }
-      client.on("message", (data, binary) => {
+      async function onMessage(data: WebSocket.RawData, binary: boolean) {
         if (closed) return;
         if (!roomId) {
           try {
@@ -151,13 +161,15 @@ export function createAudioBridge(
               typeof message.token !== "string"
             )
               throw new Error();
-            const grant = db
+            const grant = await db
               .prepare(
                 "DELETE FROM audio_tickets WHERE token=? AND expires_at>? RETURNING session_id,format",
               )
-              .get(tokenHash(message.token), Date.now()) as
-              { session_id: string; format: string } | undefined;
-            const s = grant && getSession(db, grant.session_id);
+              .get<{ session_id: string; format: string }>(
+                tokenHash(message.token),
+                Date.now(),
+              );
+            const s = grant && (await getSession(db, grant.session_id));
             if (
               !grant ||
               !s ||
@@ -167,7 +179,7 @@ export function createAudioBridge(
             )
               throw new Error();
             roomId = s.id;
-            reserveMinute();
+            await reserveMinute();
             clearTimeout(authTimeout);
             streams.set(roomId, () => cleanup());
             const streamId = randomUUID(),
@@ -194,25 +206,30 @@ export function createAudioBridge(
             provider.on("open", () => {
               if (closed) return;
               ready = true;
-              const latest = getSession(db, roomId)!;
-              const c = ensureConversation(latest);
-              c.status = "live";
-              c.notice = undefined;
-              latest.version++;
-              save(db, latest);
-              client.send(JSON.stringify({ type: "ready" }));
+              void serial(async () => {
+                if (closed) return;
+                const latest = (await getSession(db, roomId))!;
+                const c = ensureConversation(latest);
+                c.status = "live";
+                c.notice = undefined;
+                latest.version++;
+                await save(db, latest);
+                client.send(JSON.stringify({ type: "ready" }));
+              });
               keep = setInterval(() => {
                 if (provider?.readyState === WebSocket.OPEN)
                   provider.send(JSON.stringify({ type: "KeepAlive" }));
               }, 4000);
               minutes = setInterval(() => {
-                try {
-                  reserveMinute();
-                } catch {
-                  cleanup(
-                    "Recording allowance reached. Transcript testing is still available.",
-                  );
-                }
+                void serial(async () => {
+                  try {
+                    await reserveMinute();
+                  } catch {
+                    cleanup(
+                      "Recording allowance reached. Transcript testing is still available.",
+                    );
+                  }
+                });
               }, 60000);
               idle = setTimeout(
                 () =>
@@ -222,39 +239,44 @@ export function createAudioBridge(
                 20000,
               );
             });
+            // Queued: each result reads the session, appends to it and writes
+            // it back, so two results must never be in flight together.
             provider.on("message", (raw) => {
               if (closed) return;
-              try {
-                const message = JSON.parse(raw.toString());
-                if (message.type === "Error") {
-                  cleanup(
-                    "Transcription failed. Check the service key and try again.",
-                  );
-                  return;
+              void serial(async () => {
+                if (closed) return;
+                try {
+                  const message = JSON.parse(raw.toString());
+                  if (message.type === "Error") {
+                    cleanup(
+                      "Transcription failed. Check the service key and try again.",
+                    );
+                    return;
+                  }
+                  const latest = await getSession(db, roomId);
+                  if (!latest || latest.status === "finished") return cleanup();
+                  let changed = false;
+                  for (const segment of deepgramSegments(
+                    message,
+                    streamId,
+                    startedAt,
+                  ))
+                    changed =
+                      appendTranscript(
+                        latest,
+                        segment,
+                        "microphone",
+                        segment.at,
+                      ) || changed;
+                  if (changed) {
+                    latest.version++;
+                    await save(db, latest);
+                    client.send(JSON.stringify({ type: "transcript.updated" }));
+                  }
+                } catch {
+                  cleanup("Transcription returned an unreadable response.");
                 }
-                const latest = getSession(db, roomId);
-                if (!latest || latest.status === "finished") return cleanup();
-                let changed = false;
-                for (const segment of deepgramSegments(
-                  message,
-                  streamId,
-                  startedAt,
-                ))
-                  changed =
-                    appendTranscript(
-                      latest,
-                      segment,
-                      "microphone",
-                      segment.at,
-                    ) || changed;
-                if (changed) {
-                  latest.version++;
-                  save(db, latest);
-                  client.send(JSON.stringify({ type: "transcript.updated" }));
-                }
-              } catch {
-                cleanup("Transcription returned an unreadable response.");
-              }
+              });
             });
             provider.on("error", () =>
               cleanup(
@@ -293,6 +315,16 @@ export function createAudioBridge(
           20000,
         );
         provider.send(data, { binary: true });
+      }
+      /**
+       * Audio frames are forwarded straight through: they touch no database, so
+       * a queued write must never hold up the stream. Everything else, the
+       * handshake included, is serialised.
+       */
+      client.on("message", (data, binary) => {
+        if (closed) return;
+        if (roomId && binary) void onMessage(data, binary);
+        else void serial(() => onMessage(data, binary));
       });
       client.on("close", () => cleanup());
       client.on("error", () => cleanup());

@@ -13,13 +13,13 @@ export async function model<T>(
   instruction: string,
   data: unknown,
   schema: z.ZodType<T>,
-  onAttempt?: () => void,
+  onAttempt?: () => unknown | Promise<unknown>,
 ): Promise<T> {
   if (!process.env.MODEL_API_KEY) throw new Error("Meta AI is not configured");
   let previous = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    onAttempt?.();
-    reserveModelRequest();
+    await onAttempt?.();
+    await reserveModelRequest();
     const response = await fetch(
       `${process.env.MODEL_API_URL || "https://api.meta.ai/v1"}/chat/completions`,
       {
@@ -298,7 +298,7 @@ export async function recommend(
       roundId?: string;
     }[];
   },
-  onAttempt?: () => void,
+  onAttempt?: () => unknown | Promise<unknown>,
 ) {
   const schema = z
     .object({

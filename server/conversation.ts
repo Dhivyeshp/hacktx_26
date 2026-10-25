@@ -53,8 +53,9 @@ export function appendTranscript(
   c.segments.push(segment);
   // Bounded in-session text. Old transcript is not retained indefinitely.
   c.segments = c.segments.slice(-400);
-  // Parallel time-series copy. Fire and forget, and optional: a TigerDB
-  // outage must never fail or delay the transcript the players depend on.
+  // The time-series copy in the transcript hypertable. Fire and forget: a slow
+  // write must never delay the transcript the players depend on, and the session
+  // body the Game Master reads is already updated above.
   recordSegments(s.id, [segment]);
   return true;
 }
@@ -96,57 +97,53 @@ export function conversationInput(s: Session) {
     })),
   };
 }
-function ledger(db: DB) {
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS game_model_attempts(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,at INTEGER NOT NULL)",
+async function ledger(db: DB) {
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS game_model_attempts(id text PRIMARY KEY,session_id text NOT NULL,at bigint NOT NULL)",
   );
 }
 // A separate ledger prevents transcript updates from resetting the actual-request allowance.
-export function configureConversationBudget(db: DB) {
-  ledger(db);
+export async function configureConversationBudget(db: DB) {
+  await ledger(db);
 }
-export function sessionRequestUsage(sessionId: string, db?: DB) {
+export async function sessionRequestUsage(sessionId: string, db?: DB) {
   const value = Number(process.env.GAME_MODEL_MAX_REQUESTS || 12);
   const requestLimit = Number.isSafeInteger(value) && value >= 0 ? value : 0;
   const requestCount = db
-    ? (
-        db
-          .prepare(
-            "SELECT count(*) AS n FROM game_model_attempts WHERE session_id=?",
-          )
-          .get(sessionId) as { n: number }
-      ).n
+    ? (await db
+        .prepare(
+          "SELECT count(*)::int AS n FROM game_model_attempts WHERE session_id=?",
+        )
+        .get<{ n: number }>(sessionId))!.n
     : 0;
   return { requestCount, requestLimit };
 }
-export function reserveSessionRequest(db: DB, sessionId: string) {
-  ledger(db);
-  db.transaction(() => {
-    const { requestLimit } = sessionRequestUsage(sessionId, db);
-    const { n } = db
+export async function reserveSessionRequest(db: DB, sessionId: string) {
+  await ledger(db);
+  await db.transaction(async (tx) => {
+    const { requestLimit } = await sessionRequestUsage(sessionId, tx);
+    const { n } = (await tx
       .prepare(
-        "SELECT count(*) AS n FROM game_model_attempts WHERE session_id=?",
+        "SELECT count(*)::int AS n FROM game_model_attempts WHERE session_id=?",
       )
-      .get(sessionId) as { n: number };
+      .get<{ n: number }>(sessionId))!;
     if (n >= requestLimit)
       throw new Error("This game's Muse allowance is exhausted");
-    db.prepare("INSERT INTO game_model_attempts VALUES(?,?,?)").run(
-      randomUUID(),
-      sessionId,
-      Date.now(),
-    );
-  }).immediate();
+    await tx
+      .prepare("INSERT INTO game_model_attempts VALUES(?,?,?)")
+      .run(randomUUID(), sessionId, Date.now());
+  });
 }
-export function resetLiveRecordings(db: DB) {
-  for (const row of db.prepare("SELECT body FROM sessions").all() as {
-    body: string;
-  }[]) {
+export async function resetLiveRecordings(db: DB) {
+  for (const row of await db
+    .prepare("SELECT body FROM sessions")
+    .all<{ body: string }>()) {
     const s = JSON.parse(row.body) as Session;
     if (s.conversation?.status === "live") {
       s.conversation.status = "paused";
       s.conversation.notice =
         "Listening stopped when the server restarted. Start again when ready.";
-      save(db, s);
+      await save(db, s);
     }
   }
 }

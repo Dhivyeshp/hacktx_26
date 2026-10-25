@@ -1,28 +1,34 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { tigerPool } from "./db";
 
-// Reserve before sending: failed/timeout calls can still be billed by the provider.
-export function reserveModelRequest() {
-  const path = process.env.MODEL_USAGE_PATH || "data/model-usage.db";
+/**
+ * The durable Muse request ledger. Reserve before sending: failed or timed out
+ * calls can still be billed by the provider.
+ *
+ * Counted and inserted inside one transaction so two concurrent requests cannot
+ * both pass the limit check.
+ */
+export async function reserveModelRequest() {
   const limit = Number(process.env.MODEL_MAX_REQUESTS || 100);
   if (!Number.isSafeInteger(limit) || limit < 0)
     throw new Error("MODEL_MAX_REQUESTS must be a nonnegative integer");
-  mkdirSync(dirname(path), { recursive: true });
-  const db = new Database(path);
+  const client = await tigerPool().connect();
   try {
-    db.exec(
-      "CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY, at INTEGER NOT NULL)",
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      "SELECT count(*)::int AS count FROM model_usage",
     );
-    db.transaction(() => {
-      const { count } = db
-        .prepare("SELECT count(*) AS count FROM usage")
-        .get() as { count: number };
-      if (count >= limit)
-        throw new Error("Local Muse request allowance exhausted");
-      db.prepare("INSERT INTO usage(at) VALUES(?)").run(Date.now());
-    }).immediate();
+    if (rows[0].count >= limit)
+      throw new Error("Local Muse request allowance exhausted");
+    await client.query("INSERT INTO model_usage VALUES($1,$2)", [
+      randomUUID(),
+      Date.now(),
+    ]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
   } finally {
-    db.close();
+    client.release();
   }
 }

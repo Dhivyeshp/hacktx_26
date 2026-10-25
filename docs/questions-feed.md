@@ -7,7 +7,7 @@ text is shared; private mission text is filtered on the server by player ID.
 The private GM routes are `/gm` and `/questions`. Its `QuestionsSnapshot` includes named
 players, chronological suggestion batches, current selection and round history.
 Player rows include names, saved-interest readiness and recorded turn counts. It excludes raw profile excerpts, Instagram tokens and player credentials.
-Batches are persisted in the session JSON in SQLite when generation succeeds.
+Batches are persisted in the session JSON in TigerDB when generation succeeds.
 The original candidate stays in its batch; an edited selection is represented by
 the round’s recommendation. Sessions from before this feature show any remaining
 queue and known round history; previously discarded candidates cannot be recovered.
