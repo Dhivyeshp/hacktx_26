@@ -12,7 +12,10 @@ const existing = await chain.getConfig()
 if (existing) {
   console.log(`already initialized; coin mint ${existing.coinMint.toBase58()}`)
 } else {
-  const sig = await chain.initialize({ maxAwardPerRound: Number(process.env.MAX_AWARD_PER_ROUND ?? 100) })
+  const sig = await chain.initialize({
+    maxAwardPerRound: Number(process.env.MAX_AWARD_PER_ROUND ?? 100),
+    maxKudos: Number(process.env.MAX_KUDOS ?? 10),
+  })
   console.log(`initialized: ${chain.explorer(sig)}`)
 }
 console.log(`coin mint ${chain.pda.coinMint.toBase58()}  ${chain.explorer(chain.pda.coinMint.toBase58(), 'address')}`)

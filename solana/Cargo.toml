@@ -12,6 +12,8 @@ rust-version = "1.89.0"
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
+# Optimize the program for size: deploy/upgrade rent scales with binary size.
+opt-level = "z"
 [profile.release.build-override]
 opt-level = 3
 incremental = false

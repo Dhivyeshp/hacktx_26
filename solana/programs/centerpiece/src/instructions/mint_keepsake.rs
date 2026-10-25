@@ -9,6 +9,7 @@ use anchor_spl::token_interface::{mint_to, set_authority, Mint, MintTo, SetAutho
 use crate::{
     constants::*,
     error::CenterpieceError,
+    progress::{self, Badge},
     state::{Config, Player, Round},
     token_meta::*,
 };
@@ -27,16 +28,26 @@ pub struct MintKeepsake<'info> {
     pub admin: Signer<'info>,
 
     #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin)]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
 
     #[account(seeds = [ROUND_SEED, round.session_id.as_ref(), &round.round_no.to_le_bytes()], bump = round.bump)]
-    pub round: Account<'info, Round>,
+    pub round: Box<Account<'info, Round>>,
 
     /// CHECK: recipient wallet; must be a registered player.
     pub wallet: UncheckedAccount<'info>,
 
-    #[account(seeds = [PLAYER_SEED, wallet.key().as_ref()], bump = player.bump, has_one = wallet)]
-    pub player: Account<'info, Player>,
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, wallet.key().as_ref()],
+        bump = player.bump,
+        has_one = wallet,
+        has_one = badge_mint
+    )]
+    pub player: Box<Account<'info, Player>>,
+
+    /// CHECK: the player's badge, checked by `has_one = badge_mint`; updated for the collector achievement.
+    #[account(mut)]
+    pub badge_mint: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -49,7 +60,7 @@ pub struct MintKeepsake<'info> {
         extensions::metadata_pointer::authority = mint_auth,
         extensions::metadata_pointer::metadata_address = keepsake_mint,
     )]
-    pub keepsake_mint: InterfaceAccount<'info, Mint>,
+    pub keepsake_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         init,
@@ -58,7 +69,7 @@ pub struct MintKeepsake<'info> {
         associated_token::authority = wallet,
         associated_token::token_program = token_program,
     )]
-    pub keepsake_account: InterfaceAccount<'info, TokenAccount>,
+    pub keepsake_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// CHECK: PDA signer.
     #[account(seeds = [MINT_AUTH_SEED], bump = config.mint_auth_bump)]
@@ -129,6 +140,17 @@ pub fn handle_mint_keepsake(
     )?;
 
     ctx.accounts.config.keepsake_count = number + 1;
+
+    let badge_mint = ctx.accounts.badge_mint.to_account_info();
+    let admin = ctx.accounts.admin.to_account_info();
+    let badge = Badge {
+        meta: MetaAccounts { token_program: &token_program, mint: &badge_mint, authority: &mint_auth, signer_seeds: auth_seeds },
+        payer: &admin,
+    };
+    let player = &mut ctx.accounts.player;
+    player.keepsakes = player.keepsakes.checked_add(1).ok_or(CenterpieceError::Overflow)?;
+    progress::refresh(player, &badge)?;
+
     emit!(KeepsakeMinted {
         wallet: ctx.accounts.wallet.key(),
         mint: mint.key(),

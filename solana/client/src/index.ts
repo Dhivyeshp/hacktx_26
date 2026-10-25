@@ -1,30 +1,21 @@
-// Typed wrapper around the centerpiece Anchor program. The game server uses
+// Node side of @centerpiece/chain: the game server's admin client. It adds every
+// write to the browser-safe CenterpieceReader in core.ts. The game server uses
 // this (or the HTTP service in service.ts) and never builds transactions itself.
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AnchorProvider, BN, Program, Wallet } from '@anchor-lang/core'
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  getAccount,
-  getAssociatedTokenAddressSync,
-  getTokenMetadata,
-} from '@solana/spl-token'
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token'
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, clusterApiUrl } from '@solana/web3.js'
-import idl from './idl/centerpiece.json' with { type: 'json' }
-import type { Centerpiece } from './idl/centerpiece.ts'
-import { hashBytes, pdas, sessionIdBytes } from './pdas.ts'
+import { CenterpieceReader, coinAccount, hashBytes, idl, pk, sessionIdBytes, type Centerpiece } from './core.ts'
 
-export { pdas, sessionIdBytes, hashBytes }
-export type { Centerpiece }
+export * from './core.ts'
 
 const rootEnv = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env')
 if (existsSync(rootEnv)) process.loadEnvFile(rootEnv)
 
 type Key = PublicKey | string
-const pk = (k: Key) => (typeof k === 'string' ? new PublicKey(k) : k)
 
 export interface Award {
   wallet: Key
@@ -48,22 +39,17 @@ export function loadAuthority(): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, 'utf8'))))
 }
 
-export class ChainClient {
-  readonly program: Program<Centerpiece>
-  readonly pda: ReturnType<typeof pdas>
+export class ChainClient extends CenterpieceReader {
   readonly admin: Keypair
-  readonly connection: Connection
   readonly metadataBaseUrl: string
   readonly cluster: string
 
   constructor(opts: ChainOptions) {
-    this.connection = opts.connection
+    const provider = new AnchorProvider(opts.connection, new Wallet(opts.admin), { commitment: 'confirmed' })
+    super(new Program<Centerpiece>(idl as Centerpiece, provider))
     this.admin = opts.admin
     this.metadataBaseUrl = opts.metadataBaseUrl.replace(/\/$/, '')
     this.cluster = opts.cluster ?? 'devnet'
-    const provider = new AnchorProvider(opts.connection, new Wallet(opts.admin), { commitment: 'confirmed' })
-    this.program = new Program<Centerpiece>(idl as Centerpiece, provider)
-    this.pda = pdas(this.program.programId)
   }
 
   static fromEnv() {
@@ -79,10 +65,6 @@ export class ChainClient {
     })
   }
 
-  get programId() {
-    return this.program.programId
-  }
-
   explorer(value: string, kind: 'tx' | 'address' = 'tx') {
     const cluster =
       this.cluster === 'localnet'
@@ -91,9 +73,9 @@ export class ChainClient {
     return `https://explorer.solana.com/${kind}/${value}?cluster=${cluster}`
   }
 
-  // Badge and keepsake mints do a lot of CPIs; the default 200k CU is too tight.
+  // Badge updates do several metadata CPIs per instruction; the default 200k CU is too tight.
   private computeBudget() {
-    return [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 })]
+    return [ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 })]
   }
 
   private common() {
@@ -107,15 +89,16 @@ export class ChainClient {
     }
   }
 
-  // ---------- writes ----------
+  // ---------- setup ----------
 
-  async initialize(opts: { name?: string; symbol?: string; maxAwardPerRound?: number } = {}) {
+  async initialize(opts: { name?: string; symbol?: string; maxAwardPerRound?: number; maxKudos?: number } = {}) {
     return this.program.methods
       .initialize(
         opts.name ?? 'Centerpiece Coin',
         opts.symbol ?? 'TABLE',
         `${this.metadataBaseUrl}/meta/coin.json`,
         new BN(opts.maxAwardPerRound ?? 100),
+        new BN(opts.maxKudos ?? 10),
       )
       .accountsPartial({
         admin: this.admin.publicKey,
@@ -143,21 +126,31 @@ export class ChainClient {
         wallet: w,
         player: this.pda.player(w),
         badgeMint,
-        badgeAta: getAssociatedTokenAddressSync(badgeMint, w, true, TOKEN_2022_PROGRAM_ID),
+        badgeAta: coinAccount(badgeMint, w),
       })
       .preInstructions(this.computeBudget())
       .rpc()
     return { signature, player: this.pda.player(w), badgeMint }
   }
 
+  // ---------- rounds and the table goal ----------
+
+  async openSession(s: { sessionId: string; goal: number; bonusPerPlayer: number }) {
+    const signature = await this.program.methods
+      .openSession([...sessionIdBytes(s.sessionId)], new BN(s.goal), new BN(s.bonusPerPlayer))
+      .accountsPartial({
+        admin: this.admin.publicKey,
+        config: this.pda.config,
+        session: this.pda.session(s.sessionId),
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc()
+    return { signature, session: this.pda.session(s.sessionId) }
+  }
+
   async attestRound(r: { sessionId: string; roundNo: number; eventsHash: string | Uint8Array; playerCount: number }) {
     const signature = await this.program.methods
-      .attestRound(
-        [...sessionIdBytes(r.sessionId)],
-        r.roundNo,
-        [...hashBytes(r.eventsHash)],
-        r.playerCount,
-      )
+      .attestRound([...sessionIdBytes(r.sessionId)], r.roundNo, [...hashBytes(r.eventsHash)], r.playerCount)
       .accountsPartial({
         admin: this.admin.publicKey,
         config: this.pda.config,
@@ -168,19 +161,21 @@ export class ChainClient {
     return { signature, round: this.pda.round(r.sessionId, r.roundNo) }
   }
 
-  async awardPlayer(a: { sessionId: string; roundNo: number } & Award) {
+  async awardPlayer(a: { sessionId: string; roundNo: number; withSession?: boolean } & Award) {
     const w = pk(a.wallet)
     const round = this.pda.round(a.sessionId, a.roundNo)
+    const withSession = a.withSession ?? !!(await this.connection.getAccountInfo(this.pda.session(a.sessionId)))
     const signature = await this.program.methods
       .awardPlayer(new BN(a.points), a.connections ?? 0)
       .accountsPartial({
         ...this.common(),
         round,
+        session: withSession ? this.pda.session(a.sessionId) : null,
         wallet: w,
         player: this.pda.player(w),
         award: this.pda.award(round, w),
         coinMint: this.pda.coinMint,
-        walletCoinAccount: getAssociatedTokenAddressSync(this.pda.coinMint, w, true, TOKEN_2022_PROGRAM_ID),
+        walletCoinAccount: coinAccount(this.pda.coinMint, w),
         badgeMint: this.pda.badge(w),
       })
       .preInstructions(this.computeBudget())
@@ -190,7 +185,7 @@ export class ChainClient {
 
   /**
    * Attests the round (if not yet attested) and pays every award that hasn't been
-   * paid. Safe to retry: on-chain receipts make repeated calls no-ops.
+   * paid, filling the session's table goal when it has one. Safe to retry.
    */
   async settleRound(s: { sessionId: string; roundNo: number; eventsHash: string | Uint8Array; awards: Award[] }) {
     const round = this.pda.round(s.sessionId, s.roundNo)
@@ -200,6 +195,7 @@ export class ChainClient {
         await this.attestRound({ ...s, playerCount: Math.max(1, Math.min(255, s.awards.length)) })
       ).signature
     }
+    const withSession = !!(await this.connection.getAccountInfo(this.pda.session(s.sessionId)))
     const results = []
     for (const a of s.awards) {
       const wallet = pk(a.wallet).toBase58()
@@ -208,13 +204,152 @@ export class ChainClient {
         continue
       }
       try {
-        const { signature } = await this.awardPlayer({ ...s, ...a })
+        const { signature } = await this.awardPlayer({ ...s, ...a, withSession })
         results.push({ wallet, points: a.points, signature })
       } catch (err) {
         results.push({ wallet, points: a.points, signature: null, error: (err as Error).message })
       }
     }
-    return { round: round.toBase58(), attestSignature, awards: results }
+    return { round: round.toBase58(), attestSignature, awards: results, tableGoal: await this.session(s.sessionId) }
+  }
+
+  /**
+   * Pays the table-goal bonus to `wallet`. Finds one of its Award receipts from
+   * this session (any round 1..maxRounds) as proof it played.
+   */
+  async claimTableBonus(sessionId: string, wallet: Key, maxRounds = 20) {
+    const w = pk(wallet)
+    let proof: { round: PublicKey; award: PublicKey } | null = null
+    for (let r = 1; r <= maxRounds && !proof; r++) {
+      const round = this.pda.round(sessionId, r)
+      const award = this.pda.award(round, w)
+      if (await this.connection.getAccountInfo(award)) proof = { round, award }
+    }
+    if (!proof) throw new Error('NotInSession: wallet has no award in this session')
+    const session = this.pda.session(sessionId)
+    const signature = await this.program.methods
+      .claimTableBonus()
+      .accountsPartial({
+        ...this.common(),
+        session,
+        round: proof.round,
+        award: proof.award,
+        wallet: w,
+        player: this.pda.player(w),
+        bonus: this.pda.bonus(session, w),
+        coinMint: this.pda.coinMint,
+        walletCoinAccount: coinAccount(this.pda.coinMint, w),
+        badgeMint: this.pda.badge(w),
+      })
+      .preInstructions(this.computeBudget())
+      .rpc()
+    return { signature }
+  }
+
+  // ---------- kudos ----------
+
+  /** Kudos on behalf of a custodial sender (admin-authorized). */
+  async giveKudos(from: Key, to: Key, amount: number) {
+    const [f, t] = [pk(from), pk(to)]
+    const signature = await this.program.methods
+      .giveKudos(new BN(amount))
+      .accountsPartial({
+        authority: this.admin.publicKey,
+        config: this.pda.config,
+        from: f,
+        to: t,
+        fromPlayer: this.pda.player(f),
+        toPlayer: this.pda.player(t),
+        link: this.pda.kudosLink(f, t),
+        coinMint: this.pda.coinMint,
+        fromCoinAccount: coinAccount(this.pda.coinMint, f),
+        toCoinAccount: coinAccount(this.pda.coinMint, t),
+        fromBadge: this.pda.badge(f),
+        toBadge: this.pda.badge(t),
+        mintAuth: this.pda.mintAuth,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions(this.computeBudget())
+      .rpc()
+    return { signature }
+  }
+
+  // ---------- shop ----------
+
+  async createItem(i: { id: number; name: string; price: number; supply?: number; minLevel?: number; kind?: number }) {
+    const signature = await this.program.methods
+      .createItem(i.id, i.name, new BN(i.price), i.supply ?? 0, i.minLevel ?? 0, i.kind ?? 0)
+      .accountsPartial({
+        admin: this.admin.publicKey,
+        config: this.pda.config,
+        item: this.pda.item(i.id),
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc()
+    return { signature, item: this.pda.item(i.id) }
+  }
+
+  async updateItem(id: number, u: { price: number; supply: number; minLevel: number; active: boolean }) {
+    return this.program.methods
+      .updateItem(new BN(u.price), u.supply, u.minLevel, u.active)
+      .accountsPartial({ admin: this.admin.publicKey, config: this.pda.config, item: this.pda.item(id) })
+      .rpc()
+  }
+
+  /** Redemption on behalf of a custodial player (admin-authorized). */
+  async redeemItem(wallet: Key, itemId: number) {
+    const w = pk(wallet)
+    const player = await this.getPlayer(w)
+    if (!player) throw new Error('wallet is not a registered player')
+    const receipt = this.pda.receipt(w, player.redemptions)
+    const signature = await this.program.methods
+      .redeemItem()
+      .accountsPartial({
+        authority: this.admin.publicKey,
+        config: this.pda.config,
+        wallet: w,
+        player: this.pda.player(w),
+        item: this.pda.item(itemId),
+        receipt,
+        coinMint: this.pda.coinMint,
+        walletCoinAccount: coinAccount(this.pda.coinMint, w),
+        badgeMint: player.badgeMint,
+        mintAuth: this.pda.mintAuth,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions(this.computeBudget())
+      .rpc()
+    return { signature, receipt, number: player.redemptions }
+  }
+
+  async fulfillReceipt(receipt: Key) {
+    return this.program.methods
+      .fulfillReceipt()
+      .accountsPartial({ admin: this.admin.publicKey, config: this.pda.config, receipt: pk(receipt) })
+      .rpc()
+  }
+
+  // ---------- achievements and keepsakes ----------
+
+  async grantAchievement(wallet: Key, bit: number) {
+    const w = pk(wallet)
+    return this.program.methods
+      .grantAchievement(bit)
+      .accountsPartial({
+        admin: this.admin.publicKey,
+        config: this.pda.config,
+        wallet: w,
+        player: this.pda.player(w),
+        badgeMint: this.pda.badge(w),
+        mintAuth: this.pda.mintAuth,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .preInstructions(this.computeBudget())
+      .rpc()
   }
 
   async mintKeepsake(k: {
@@ -235,60 +370,12 @@ export class ChainClient {
         round: this.pda.round(k.sessionId, k.roundNo),
         wallet: w,
         player: this.pda.player(w),
+        badgeMint: this.pda.badge(w),
         keepsakeMint: mint,
-        keepsakeAccount: getAssociatedTokenAddressSync(mint, w, true, TOKEN_2022_PROGRAM_ID),
+        keepsakeAccount: coinAccount(mint, w),
       })
       .preInstructions(this.computeBudget())
       .rpc()
     return { signature, mint }
-  }
-
-  // ---------- reads ----------
-
-  getConfig() {
-    return this.program.account.config.fetchNullable(this.pda.config)
-  }
-
-  getPlayer(wallet: Key) {
-    return this.program.account.player.fetchNullable(this.pda.player(pk(wallet)))
-  }
-
-  getRound(sessionId: string, roundNo: number) {
-    return this.program.account.round.fetchNullable(this.pda.round(sessionId, roundNo))
-  }
-
-  async coinBalance(wallet: Key): Promise<number> {
-    const ata = getAssociatedTokenAddressSync(this.pda.coinMint, pk(wallet), true, TOKEN_2022_PROGRAM_ID)
-    try {
-      return Number((await getAccount(this.connection, ata, 'confirmed', TOKEN_2022_PROGRAM_ID)).amount)
-    } catch {
-      return 0
-    }
-  }
-
-  /** Name, symbol, uri and custom fields stored on a Token-2022 mint. */
-  async tokenMetadata(mint: Key) {
-    const meta = await getTokenMetadata(this.connection, pk(mint), 'confirmed', TOKEN_2022_PROGRAM_ID)
-    if (!meta) return null
-    return { name: meta.name, symbol: meta.symbol, uri: meta.uri, fields: Object.fromEntries(meta.additionalMetadata) }
-  }
-
-  /** Everything a profile page needs for one wallet. */
-  async profile(wallet: Key) {
-    const w = pk(wallet)
-    const player = await this.getPlayer(w)
-    if (!player) return null
-    const [coins, badge] = await Promise.all([this.coinBalance(w), this.tokenMetadata(player.badgeMint)])
-    return {
-      wallet: w.toBase58(),
-      badgeMint: player.badgeMint.toBase58(),
-      level: player.level,
-      xp: Number(player.xp.toString()),
-      coinsEarned: Number(player.coinsEarned.toString()),
-      coins,
-      connections: player.connections,
-      roundsPlayed: player.roundsPlayed,
-      badgeFields: badge?.fields ?? {},
-    }
   }
 }
