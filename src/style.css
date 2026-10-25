@@ -277,7 +277,7 @@ main {
 .primary {
   background: var(--tan);
   border: 1px solid var(--tan);
-  color: var(--bg);
+  color: var(--button-ink);
   border-radius: 999px;
 }
 .primary:hover {
@@ -1435,4 +1435,283 @@ label small,
 .player-nav > a,
 .text-button {
   font-size: 15px;
+}
+
+/* Appearance controls work in both the player app and the private preview. */
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-left: auto;
+}
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font: 400 13px var(--font-ui);
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  background: var(--bg-raised);
+}
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+.theme-light {
+  display: none;
+}
+:root[data-theme="light"] .theme-dark {
+  display: none;
+}
+:root[data-theme="light"] .theme-light {
+  display: inline-block;
+}
+:root[data-theme="light"] .player-nav .selected {
+  border-bottom-color: var(--tan-deep);
+}
+:root[data-theme="light"] .source-panel {
+  --focus: var(--tan-deep);
+}
+.connection-details {
+  margin-top: 18px;
+}
+.connection-details summary {
+  border-color: var(--line);
+  font-size: 13px;
+}
+.connection-details p {
+  font-size: 13px;
+  margin: 10px 0 16px;
+}
+.connection-details button {
+  margin-top: 10px;
+}
+.source-intro {
+  font-size: 15px;
+  max-width: 34ch;
+}
+.source-panel .import-summary {
+  margin: 16px 0 0;
+  padding: 14px 16px;
+}
+.source-panel .import-summary p {
+  font-size: 14px;
+}
+.profile-grid .source-panel,
+.profile-grid .interest-panel {
+  align-self: start;
+}
+.profile-grid {
+  align-items: start;
+}
+.interest-panel > p {
+  margin-bottom: 14px;
+}
+@media (max-width: 760px) {
+  .header {
+    height: 84px;
+    padding: 0 18px;
+    gap: 10px;
+  }
+  .brand {
+    font-size: 34px;
+    gap: 8px;
+  }
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+  }
+  .header-tools {
+    gap: 10px;
+  }
+  .theme-toggle {
+    width: 44px;
+    padding: 10px;
+    border-color: var(--line);
+  }
+  .theme-label {
+    display: none !important;
+  }
+  .room-pill {
+    gap: 0;
+  }
+  .room-pill > .dot {
+    display: none;
+  }
+  .room-pill > span:last-child {
+    font-size: 0;
+  }
+  .room-pill small {
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    margin: 0;
+  }
+  main {
+    padding: 0 16px;
+  }
+  .player-nav {
+    gap: 0;
+    justify-content: space-between;
+    min-height: 58px;
+  }
+  .player-nav button,
+  .player-nav > a {
+    min-height: 58px;
+    justify-content: center;
+    flex: 1;
+    font-size: 14px;
+  }
+  .profile-page {
+    padding-top: 26px;
+  }
+  .page-heading {
+    margin-bottom: 24px;
+  }
+  .page-heading h1 {
+    font-size: 46px;
+    margin: 10px 0 12px;
+  }
+  .page-heading > div > p {
+    font-size: 15px;
+  }
+  .profile-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .profile-grid .panel {
+    width: 100%;
+    padding: 23px 22px;
+  }
+  .profile-grid .source-panel {
+    padding: 21px 22px;
+    border-radius: 8px;
+  }
+  .source-panel h2 {
+    font-size: 30px;
+    margin: 0 0 10px;
+  }
+  .source-panel > p {
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .integration-status {
+    margin: 12px 0 0;
+    font-size: 13px;
+  }
+  .source-panel .import-summary {
+    margin-top: 12px;
+    padding: 12px;
+  }
+  .source-panel .import-summary p {
+    font-size: 13px;
+  }
+  .source-panel .connection-details {
+    margin-top: 12px;
+  }
+  .source-panel .connection-details summary {
+    padding-bottom: 0;
+  }
+  .has-interests .interest-panel {
+    order: -1;
+  }
+  .interest-panel h2 {
+    font-size: 36px;
+    margin: 0 0 12px;
+  }
+  .interest-panel > p {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .interest-choices {
+    margin: 16px 0 20px;
+  }
+  .interest-count {
+    margin-top: 16px;
+  }
+  .saved-status {
+    margin: 20px 0 8px;
+  }
+  .saved-interests {
+    margin-bottom: 14px;
+  }
+  .interest-row {
+    min-height: 52px;
+  }
+  .interest-state {
+    font-size: 12px !important;
+  }
+  .profile-action {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .profile-action .primary {
+    min-height: 48px;
+  }
+  .join-layout {
+    padding: 30px 0;
+    gap: 26px;
+  }
+  .welcome-copy h1 {
+    font-size: 46px;
+    margin: 16px 0;
+  }
+  .welcome-copy > p {
+    font-size: 15px;
+  }
+  .join-panel {
+    padding: 24px;
+  }
+  .join-panel h2 {
+    font-size: 36px;
+  }
+  .join-panel form {
+    gap: 20px;
+    margin-top: 24px;
+  }
+  .join-panel .quiet-note {
+    margin-top: 18px;
+    padding-top: 16px;
+  }
+  .ready-layout {
+    padding-top: 28px;
+    gap: 24px;
+  }
+  .ready-seal {
+    display: none;
+  }
+  .ready-main h1 {
+    font-size: 48px;
+    margin-top: 18px;
+  }
+  .ready-main > p {
+    font-size: 16px;
+  }
+  .next-panel h2 {
+    font-size: 34px;
+  }
+  footer {
+    padding: 22px 18px;
+  }
+  footer > span:last-child {
+    display: none;
+  }
+}
+
+.saved-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+:root[data-theme="light"] .profile-grid .interest-panel {
+  border: 1px solid var(--line-light);
 }

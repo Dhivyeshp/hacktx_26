@@ -12,6 +12,8 @@ import {
   LockKeyhole,
   RefreshCw,
   Shield,
+  Sun,
+  Moon,
   Users,
   X,
 } from "lucide-react";
@@ -165,8 +167,16 @@ function App() {
       <header className="header">
         <a className="brand" href="/" aria-label="destina home">
           <img
-            className="brand-mark"
+            className="brand-mark theme-dark"
             src="/logo-mark-dark.svg"
+            alt=""
+            aria-hidden="true"
+            width="52"
+            height="52"
+          />
+          <img
+            className="brand-mark theme-light"
+            src="/logo-mark-light.svg"
             alt=""
             aria-hidden="true"
             width="52"
@@ -174,15 +184,29 @@ function App() {
           />
           <span>destina</span>
         </a>
-        {s && (
-          <div className="room-pill">
-            <span className={ended ? "dot ended" : "dot"} />
-            <span>
-              {s.room.name}
-              <small>ROOM {s.room.code}</small>
-            </span>
-          </div>
-        )}
+        <div className="header-tools">
+          {s && (
+            <div className="room-pill">
+              <span className={ended ? "dot ended" : "dot"} />
+              <span>
+                {s.room.name}
+                <small>ROOM {s.room.code}</small>
+              </span>
+            </div>
+          )}
+          <button
+            className="theme-toggle"
+            data-theme-toggle
+            type="button"
+            aria-label="Toggle light and dark mode"
+            title="Toggle light and dark mode"
+          >
+            <Sun className="theme-dark" size={18} aria-hidden="true" />
+            <Moon className="theme-light" size={18} aria-hidden="true" />
+            <span className="theme-label theme-dark">Light mode</span>
+            <span className="theme-label theme-light">Dark mode</span>
+          </button>
+        </div>
       </header>
       <main>
         {error && (
@@ -208,17 +232,8 @@ function App() {
                 <em>A little curiosity.</em>
               </h1>
               <p>
-                A few things you’re into can lead to a conversation you didn’t
-                expect. Tina will bring the relics.
+                A few interests. A table of people. Tina takes it from there.
               </p>
-              <div className="welcome-foot">
-                <span>
-                  <Shield size={15} /> You choose what to share
-                </span>
-                <span>
-                  <Users size={15} /> Your people, around one table
-                </span>
-              </div>
             </div>
             <section className="panel join-panel">
               <span className="eyebrow">
@@ -227,8 +242,8 @@ function App() {
               <h2>{room ? room.name : "A place at the table."}</h2>
               <p>
                 {fromChip
-                  ? "Join your room first so we can show you the right prompt."
-                  : "You found Tina. Now we just need your name."}
+                  ? "Join your room to open this relic."
+                  : "What should we call you?"}
               </p>
               {room && (
                 <div className="room-label">
@@ -289,8 +304,8 @@ function App() {
                 <Shield size={16} />
                 <p>
                   {fromChip
-                    ? "Every relic opens the same page. Joining connects this phone to your room."
-                    : "Your profile helps us suggest interests. Nothing enters the game until you approve it."}
+                    ? "Join on this phone to open your relics."
+                    : "You choose which interests the game uses."}
                 </p>
               </div>
               {!requestedRoom && (
@@ -376,8 +391,8 @@ function App() {
                   </h1>
                   <p>
                     {s.me.interests.some((i) => i.approved)
-                      ? "Your profile is ready. You can put your phone away until Tina brings a relic."
-                      : "Add a few interests so the questions feel a little more like you."}
+                      ? "You’re ready. Tina will bring your relic."
+                      : "A few interests will help us find your questions."}
                   </p>
                   <div className="interest-cloud">
                     {s.me.interests
@@ -404,24 +419,15 @@ function App() {
                     talk about.
                   </h2>
                   <div className="next-copy">
-                    <p>
-                      The Game Master is choosing a question for your table,
-                      using the interests everyone has shared.
-                    </p>
-                    <p>
-                      When Tina brings a relic, hold your phone near the chip
-                      inside. Your question will open here.
-                    </p>
+                    <p>Your Game Master is choosing the next question.</p>
+                    <p>Tap the chip inside your relic to open it here.</p>
                   </div>
                   <a className="secondary full" href="/c">
                     Your relic <ArrowUpRight size={16} />
                   </a>
                   <div className="quiet-note">
                     <LockKeyhole size={15} />
-                    <p>
-                      Private missions are shown only to the assigned player on
-                      their joined phone.
-                    </p>
+                    <p>Private missions stay on the assigned player’s phone.</p>
                   </div>
                 </aside>
               </section>
@@ -508,16 +514,13 @@ function Profile({
   }
   return (
     <section
-      className={`profile-page ${readOnly ? "read-only" : ""} ${saved ? "profile-saved" : "profile-editing"}`}
+      className={`profile-page ${readOnly ? "read-only" : ""} ${saved ? "profile-saved" : "profile-editing"} ${s.me.interests.length ? "has-interests" : ""}`}
     >
       <div className="page-heading">
         <div>
           <span className="eyebrow">YOUR PROFILE</span>
           <h1>A little about you.</h1>
-          <p>
-            What do you spend your time on? What could you talk about for hours?
-            That’s a good place to start.
-          </p>
+          <p>A few interests for questions that fit you.</p>
         </div>
       </div>
       {s.notice && (
@@ -527,13 +530,11 @@ function Profile({
       )}
       <div className="profile-grid">
         <section className="panel source-panel">
-          <span className="eyebrow">INSTAGRAM</span>
-          <h2>The things you’re into.</h2>
-          <p>
-            Connect Instagram to find interests in your profile and recent
-            captions. You’ll choose what feels right.
+          <h2>Your Instagram.</h2>
+          <p className="source-intro">
+            Meta AI suggests interests from your bio and captions.
           </p>
-          {!readOnly && (
+          {!readOnly && !s.connected && (
             <a
               className="secondary full instagram"
               href="/api/instagram/connect"
@@ -546,60 +547,51 @@ function Profile({
           <div className="integration-status">
             <span className={s.connected ? "dot" : "dot dim"} />
             {s.connected
-              ? "Profile connected"
+              ? "Connected"
               : s.instagramReady
                 ? "Ready to connect"
                 : "You can add interests without connecting"}
           </div>
           {s.sources.some((source) => source.kind !== "manual") && (
             <div className="notice import-summary">
-              <p>
-                {importSummary(s.sources)} Questions use only interests you
-                approve.
-              </p>
-              {!readOnly && (
-                <button
-                  className="secondary full"
-                  disabled={!!busy}
-                  onClick={() => run("analyze", "/profile/analyze", {})}
-                >
-                  {busy === "analyze" ? (
-                    <LoaderCircle className="spin" size={16} />
-                  ) : null}
-                  {busy === "analyze"
-                    ? "Finding interests…"
-                    : "Find interests in saved profile"}
-                </button>
-              )}
-              {!readOnly && (
-                <p>
-                  This uses your saved profile. You won’t need to connect
-                  Instagram again.
-                </p>
-              )}
+              <p>{importSummary(s.sources)}</p>
             </div>
           )}
-          <p className="fine-print">
-            Instagram supports Business and Creator accounts. We read your bio
-            and recent captions, never your messages or saved posts.
-          </p>
-          <div className="quiet-note">
-            <Shield size={15} />
+          <details className="connection-details">
+            <summary>About this connection</summary>
+            {!readOnly && s.connected && (
+              <a className="text-button" href="/api/instagram/connect">
+                Reconnect Instagram
+              </a>
+            )}
             <p>
-              Your imported profile is sent to Meta AI to suggest interests.
-              Only the interests you save are used for questions. Imported text
-              is removed when the room closes.
+              Business or Creator accounts only. Messages and saved posts are
+              never imported.
             </p>
-          </div>
+            <p>Your imported text is removed when the room closes.</p>
+            {s.sources.some((source) => source.kind !== "manual") && (
+              <>
+                {!readOnly && (
+                  <button
+                    className="secondary full"
+                    disabled={!!busy}
+                    onClick={() => run("analyze", "/profile/analyze", {})}
+                  >
+                    {busy === "analyze" ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : null}
+                    {busy === "analyze"
+                      ? "Finding interests…"
+                      : "Refresh suggestions"}
+                  </button>
+                )}
+              </>
+            )}
+          </details>
         </section>
         <section className="panel interest-panel">
-          <span className="eyebrow">YOUR INTERESTS</span>
-          <h2>{saved ? "The things you chose." : "What feels like you?"}</h2>
-          <p>
-            {saved
-              ? "These interests will help shape the questions at your table."
-              : "Keep what fits, leave out what doesn’t, and add anything missing."}
-          </p>
+          <h2>Your interests.</h2>
+          {!saved && <p>Keep what fits. Add anything missing.</p>}
           {saved || readOnly ? (
             <>
               <div className="saved-status" role="status" aria-live="polite">
@@ -609,10 +601,15 @@ function Profile({
                     ? "No interests saved"
                     : savedRecently
                       ? "Interests saved"
-                      : "Your interests are saved"}
+                      : "Saved"}
                 </span>
+                {approved.length > 0 && (
+                  <span className="saved-count">
+                    {approved.length} interests
+                  </span>
+                )}
               </div>
-              <p className="interest-count">{approved.length} kept</p>
+
               <ul className="saved-interests" aria-label="Saved interests">
                 {approved.map((i) => (
                   <li key={i.id}>
@@ -707,8 +704,7 @@ function Profile({
                 </div>
               ) : (
                 <div className="interest-empty">
-                  <h3>A few things you like.</h3>
-                  <p>You can connect Instagram or add your interests here.</p>
+                  <p>Add your own interests, or use Instagram.</p>
                 </div>
               )}
               <form id="interests-form" onSubmit={submit}>
@@ -721,9 +717,7 @@ function Profile({
                     onChange={(e) => setManual(e.target.value)}
                     placeholder="Climbing, live music, cooking"
                   />
-                  <small>
-                    Separate interests with commas. You can save up to 12.
-                  </small>
+                  <small>Use commas. Up to 12 interests.</small>
                 </label>
                 <div className="approval-note" aria-live="polite">
                   <span>{dirty ? "Unsaved changes" : "No changes yet"}</span>
@@ -770,36 +764,33 @@ function Profile({
               </form>
             </>
           )}
-          <p className="fine-print under-save">
-            You can come back and change these whenever you like.
-          </p>
-          {s.sources.length > 0 && (
+
+          {s.sources.some((source) => source.kind !== "manual") && (
             <details>
               <summary>
                 <FileText size={14} />
-                The profile text we used
-                <span>{s.sources.length}</span>
+                Imported text
+                <span>
+                  {
+                    s.sources.filter((source) => source.kind !== "manual")
+                      .length
+                  }
+                </span>
               </summary>
-              {s.sources.map((source) => (
-                <blockquote key={source.id}>
-                  <span className="eyebrow">
-                    {source.kind === "manual"
-                      ? "YOU ADDED"
-                      : source.kind.toUpperCase()}
-                  </span>
-                  <p>{source.text}</p>
-                </blockquote>
-              ))}
+              {s.sources
+                .filter((source) => source.kind !== "manual")
+                .map((source) => (
+                  <blockquote key={source.id}>
+                    <span className="eyebrow">
+                      {source.kind === "manual"
+                        ? "YOU ADDED"
+                        : source.kind.toUpperCase()}
+                    </span>
+                    <p>{source.text}</p>
+                  </blockquote>
+                ))}
             </details>
           )}
-          <div className="privacy-bottom">
-            <LockKeyhole size={16} />
-            <p>
-              Your profile stays in this room.
-              <br />
-              You can remove it whenever you like.
-            </p>
-          </div>
           {deleting ? (
             <div className="delete-confirm">
               <p>
@@ -828,7 +819,7 @@ function Profile({
               className="text-button muted"
               onClick={() => setDeleting(true)}
             >
-              Disconnect & delete my profile data
+              Remove profile
             </button>
           )}
         </section>
@@ -947,10 +938,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
             <br />
             <em>between relics.</em>
           </h1>
-          <p>
-            Your Game Master hasn’t assigned a question yet. This page will
-            update when the next relic is ready.
-          </p>
+          <p>Your next question will appear here.</p>
           {!s.me.interests.some((i) => i.approved) && (
             <button className="secondary" onClick={onProfile}>
               Add your interests while you wait <ArrowRight size={16} />
@@ -968,10 +956,7 @@ function Capsule({ s, onProfile }: { s: Snapshot; onProfile: () => void }) {
           Check for a new question
         </button>
       </div>
-      <p className="capsule-note">
-        Every relic opens this page. The question follows your room, not the
-        individual chip.
-      </p>
+      <p className="capsule-note">Your relic follows your room.</p>
     </section>
   );
 }

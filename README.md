@@ -186,3 +186,14 @@ branding preferences from the app design session.
 Destina uses relics for the objects Tina carries. Existing public URLs and API
 field names remain compatible with the tap tags and control adapter. The private
 preview uses the same design tokens and a numbered question reading layout.
+
+### Appearance and phone layouts
+
+The header switches between light and dark appearance. `public/theme.js` applies
+the saved `destina-theme` preference before the app renders, otherwise following
+the device setting. Changes sync across tabs on the same origin; storage-blocked
+browsers still allow switching for the current page. The preview uses the same
+controller and palette. On phones, profiles with interests place that list first,
+connection/privacy details are collapsed, and save/continue actions remain at
+the bottom with safe-area spacing. Imported text and question explanations stay
+available through disclosures.

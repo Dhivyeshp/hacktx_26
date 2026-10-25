@@ -27,3 +27,17 @@
   background: var(--bg);
   color: var(--text);
 }
+
+:root {
+  color-scheme: dark;
+  --button-ink: #26271f;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ece8dd;
+  --bg-raised: #dedcd1;
+  --line: #c9c6ba;
+  --text: #26271f;
+  --text-muted: #5c5b52;
+  --focus: #9a7244;
+}
