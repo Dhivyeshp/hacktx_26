@@ -48,4 +48,7 @@ Updated October 25, 2026. This separates working browser features from integrati
 ## Separate hardware and bonus work
 
 - [ ] Verify Tina delivery acknowledgements and their relationship to the selected question. One identical URL cannot identify which physical tag was tapped.
-- [ ] Connect and validate any intended audio, generated art or on-chain rewards separately. Their presence elsewhere in the repository does not mean they are integrated into this browser game flow.
+- [x] Tina Tokens scoring, GM stats and award approval, player balances, shared goal and receipt-protected devnet settlement. Verified in a separate live devnet smoke game.
+- [ ] Rename legacy on-chain TABLE metadata if external wallets and explorers must also show Tina Tokens. The game frontend already uses Tina Tokens throughout.
+- [ ] Wire the shared-finale celebration to Tina hardware. The current celebration control records a simulated event.
+- [ ] Connect intended generated art, wallet connections, shop redemption or mainnet rewards separately; they are outside the first reward loop.

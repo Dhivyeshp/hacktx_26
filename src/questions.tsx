@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sun, Moon, RefreshCw, LockKeyhole } from "lucide-react";
 import { captureRoomAudio, type AudioHandle } from "./live-audio";
+import { GMRewards } from "./rewards";
 import type { QuestionsSnapshot, Recommendation } from "../shared/types";
 
 async function request(
@@ -490,6 +491,7 @@ export function Questions() {
               <a href="#gm-conversation">Live conversation</a>
               <a href="#gm-suggestions">Next prompts</a>
               <a href="#roster-heading">Players</a>
+              <a href="#gm-tokens">Tina Tokens</a>
             </nav>
             {feed.canControl && !demo && (
               <details className="gm-access">
@@ -1133,6 +1135,7 @@ export function Questions() {
                 )}
               </div>
             </div>
+            <GMRewards feed={feed} busy={busy} act={act} />
             {feed.canControl && (
               <section className="gm-reset" aria-label="Reset game">
                 {resetGame ? (
@@ -1141,7 +1144,8 @@ export function Questions() {
                     <p>
                       This clears every player, profile, transcript, prompt and
                       recorded turn in this game. Everyone will need to join
-                      again. Spending limits stay in place.
+                      again. Spending limits stay in place. A new token game
+                      starts, while confirmed blockchain history remains.
                     </p>
                     <div className="gm-actions">
                       <button

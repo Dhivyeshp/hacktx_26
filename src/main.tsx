@@ -24,6 +24,7 @@ import { Questions } from "./questions";
 import { VoiceIntro } from "./voice-intro";
 import { importSummary } from "./profile-copy";
 import { ProfileInterests } from "./profile-interests";
+import { PlayerTokenBalance } from "./rewards";
 async function api(path: string, body?: unknown, method?: string) {
   const response = await fetch("/api" + path, {
     method: method || (body ? "POST" : "GET"),
@@ -534,6 +535,7 @@ function Profile({
           </details>
         </section>
       </div>
+      <PlayerTokenBalance rewards={s.rewards} />
       {!readOnly && (
         <section className="profile-reset" aria-label="Profile settings">
           {deleting ? (

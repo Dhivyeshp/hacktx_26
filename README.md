@@ -274,3 +274,18 @@ intro still requires reviewing its text and explicitly requesting extraction.
 GM readiness updates from persisted interests. Every joined player needs at least
 one interest, with at least two players in demo mode (three in private mode), before generation or assignment.
 Removing a player's last interest blocks the next generation and start again.
+
+### Tina Tokens and Game Master stats
+
+`/gm#gm-tokens` contains round award review, player statistics, shared-goal
+settings and explicit Solana devnet settlement. The five scored actions total at
+most 10 Tina Tokens per person per round. Bonuses need a GM observation or real
+speech evidence with a confirmed player name. Passing carries no deduction.
+Players see their own confirmed/pending balance and the shared goal below their
+profile cards. Muse can suggest awards during existing conversation generation;
+only GM approval creates pending awards, and settlement is a separate action.
+
+Set `CHAIN_SERVICE_URL` and `CHAIN_API_TOKEN` on the game server, alongside the
+existing `TOKEN_ENCRYPTION_KEY`. Wallets are encrypted locally before registration.
+Mainnet is rejected. Each reset starts a new reward game so round IDs cannot
+accidentally replay an old payout. See [Tina Tokens setup and operation](docs/tina-tokens.md).
