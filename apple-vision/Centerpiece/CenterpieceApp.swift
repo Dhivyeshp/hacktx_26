@@ -8,6 +8,7 @@ final class ImmersiveExperience {
     static let launcherID = "CenterpieceLauncher"
 
     let relay = RelayClient()
+    let hands = HandMotionController()
     var useLiveVideo = RelayConfiguration.bundled() != nil
     var demoVideoAvailable = true
     var hasAttemptedLaunch = false
@@ -98,6 +99,8 @@ private struct RobotImmersiveView: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
     @State private var isExiting = false
+    // Seeded with a value no gate produces, so the first evaluation always logs.
+    @State private var lastMotionBlock: String? = "not evaluated yet"
 
     var body: some View {
         RealityView { content, attachments in
@@ -115,6 +118,29 @@ private struct RobotImmersiveView: View {
                     .preferredColorScheme(.dark)
             }
         }
+        .task(id: session.handDrivingEnabled) {
+            if session.handDrivingEnabled { await experience.hands.run(model: session) }
+            else { experience.hands.stop(model: session) }
+        }
+        .task {
+            while !Task.isCancelled {
+                syncMotion()
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            }
+        }
+        .onChange(of: session.wheelCommand) { _, _ in syncMotion() }
+        .onChange(of: session.handDrivingEnabled) { _, enabled in
+            print("[hands] Driving enabled: \(enabled)")
+            syncMotion()
+        }
+        .onChange(of: session.controlsSuspended) { _, _ in syncMotion() }
+        .onChange(of: experience.relay.canControlRobot) { _, canControl in
+            print("[relay] Can control: \(canControl), connected: \(experience.relay.isConnected), fresh video: \(experience.relay.hasFreshFrame)")
+            if experience.useLiveVideo && !canControl && session.handDrivingEnabled {
+                session.emergencyStop(reason: "Relay disconnected, video stale, or Pi absent")
+            }
+            syncMotion()
+        }
         .onAppear {
             experience.isImmersed = true
             experience.isOpening = false
@@ -122,8 +148,9 @@ private struct RobotImmersiveView: View {
             dismissWindow(id: ImmersiveExperience.launcherID)
         }
         .onDisappear {
-            session.emergencyStop()
-            experience.relay.disconnect()
+            session.emergencyStop(reason: "Immersive view closed")
+            experience.hands.stop(model: session)
+            experience.relay.disconnect(reason: "immersive view disappeared")
             experience.isImmersed = false
             experience.isOpening = false
             session.controlsSuspended = false
@@ -132,10 +159,39 @@ private struct RobotImmersiveView: View {
         }
     }
 
+    /// Every gate between a held pinch and a `drive` frame on the wire, in order.
+    /// A quiet relay then names its own cause instead of looking like a dropped
+    /// message. Zero wheels are a reason too: `sendDrive` turns them into a stop.
+    private var motionBlockReason: String? {
+        if !experience.useLiveVideo { return "live relay video is off" }
+        if !session.handDrivingEnabled { return "hand driving is not enabled" }
+        if let reason = session.driveBlockReason { return reason }
+        if session.armed { return "the drop is armed" }
+        if let reason = experience.relay.controlBlockReason { return reason }
+        if session.wheelCommand == .zero { return "hands are neutral" }
+        return nil
+    }
+
+    private func syncMotion() {
+        let reason = motionBlockReason
+        if reason != lastMotionBlock {
+            if let reason { print("[relay] Wheels idle: \(reason)") }
+            else { print("[relay] Wheels driving") }
+            lastMotionBlock = reason
+        }
+        guard reason == nil else {
+            experience.relay.stopRobot()
+            experience.relay.noteMotionIdle(reason)
+            return
+        }
+        let wheels = session.wheelCommand
+        experience.relay.sendDrive(left: wheels.left, right: wheels.right)
+    }
+
     private func exit() {
         guard !isExiting else { return }
         isExiting = true
-        session.emergencyStop()
+        session.emergencyStop(reason: "Exit immersive selected")
         Task {
             // Create a recovery window before leaving the space.
             openWindow(id: ImmersiveExperience.launcherID)

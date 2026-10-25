@@ -54,8 +54,14 @@ struct DriveInput: Equatable {
 }
 
 struct WheelCommand: Equatable {
+    static let zero = WheelCommand(left: 0, right: 0)
     let left: Float
     let right: Float
+
+    init(left: Float, right: Float) {
+        self.left = left.isFinite ? max(-0.6, min(0.6, left)) : 0
+        self.right = right.isFinite ? max(-0.6, min(0.6, right)) : 0
+    }
 
     init(forward: Float, turn: Float) {
         let rawLeft = forward + turn
@@ -92,6 +98,7 @@ final class DemoSession {
     private(set) var activeQuestion: QuestionSelection?
     private(set) var roundInProgress = false
     var controlsSuspended = false
+    private(set) var sceneActive = true
     private(set) var status = "Choose a player, then a question."
     private(set) var forward: Float = 0
     private(set) var turn: Float = 0
@@ -101,6 +108,9 @@ final class DemoSession {
     private(set) var driveGestureID: UUID?
     var driveGestureActive: Bool { driveGestureID != nil }
     private(set) var armingID: UUID?
+    private(set) var handDrivingEnabled = false
+    private(set) var handDrivingStatus = "Hand driving is off"
+    private(set) var wheelCommand = WheelCommand.zero
     var cameraAvailable = true
     var failure: DemoFailure = .none
     private var dropTask: Task<Void, Never>?
@@ -115,10 +125,20 @@ final class DemoSession {
     }
     var isBusy: Bool { phase == .updating || phase == .dispensing }
     var isMoving: Bool { abs(forward) > 0.01 || abs(turn) > 0.01 }
-    var canDrive: Bool { isDriving && selection != nil && phase == .ready && cameraAvailable && !controlsSuspended }
+    /// The first unmet precondition for driving, or nil when driving is allowed.
+    /// Named so the headset and the console can say why the wheels are idle.
+    var driveBlockReason: String? {
+        if !isDriving { return "pick a player and a question, then start positioning" }
+        if selection == nil { return "no question selected" }
+        if phase != .ready { return "phase is \(phase.rawValue)" }
+        if !cameraAvailable { return "camera frames are stale" }
+        if controlsSuspended { return "a panel is open" }
+        if !sceneActive { return "the app is not active" }
+        return nil
+    }
+    var canDrive: Bool { driveBlockReason == nil }
     var canArm: Bool { canDrive && !driveGestureActive && !isMoving }
     var canDrop: Bool { canArm && armed }
-    var wheelCommand: WheelCommand { WheelCommand(forward: forward, turn: turn) }
     var motionLabel: String {
         if !isMoving { return driveGestureActive ? "Pinch held · centered" : "Stopped" }
         if forward > 0.01 {
@@ -146,6 +166,7 @@ final class DemoSession {
         status = "Position the robot, stop, then arm the drop."
     }
     func editSelection() {
+        disableHandDriving(reason: "Changing question")
         guard !isBusy, !roundInProgress else { return }
         halt()
         isDriving = false
@@ -165,6 +186,40 @@ final class DemoSession {
         guard gestureID == nil || gestureID == driveGestureID else { return }
         move(forward: input.forward, turn: input.turn)
     }
+    func setSceneActive(_ active: Bool) {
+        guard active != sceneActive else { return }
+        sceneActive = active
+        halt()
+        if handDrivingEnabled {
+            handDrivingStatus = active ? "Open both hands to resume driving" : "Paused while the app is inactive"
+            print("[hands] Focus active: \(active); movement stopped, open-hand reset required")
+        }
+    }
+    func enableHandDriving() {
+        guard canDrive, !handDrivingEnabled else { return }
+        halt()
+        handDrivingEnabled = true
+        handDrivingStatus = "Hand driving enabled"
+        print("[hands] Enabled by user")
+    }
+    func disableHandDriving(reason: String = "Pause button selected") {
+        // Preserve the first cause when later lifecycle cleanup stops again.
+        if handDrivingEnabled {
+            handDrivingStatus = "Paused: \(reason)"
+            print("[hands] Disabled: \(reason)")
+            log("Hand driving paused: \(reason)")
+        }
+        handDrivingEnabled = false
+        halt()
+    }
+    func applyHandWheels(_ wheels: WheelCommand, gestureID: UUID) {
+        guard handDrivingEnabled, driveGestureID == gestureID, canDrive else { return }
+        wheelCommand = wheels
+        forward = max(0, (wheels.left + wheels.right) / 1.2)
+        turn = (wheels.left - wheels.right) / 1.2
+        disarm()
+        lastMotionTime = Date()
+    }
     func arm() {
         guard canArm else { return }
         armed = true
@@ -175,12 +230,14 @@ final class DemoSession {
         guard driveGestureActive, canDrive, forward.isFinite, turn.isFinite else { endDrive(); return }
         self.forward = max(0, min(1, forward))
         self.turn = max(-1, min(1, turn))
+        wheelCommand = WheelCommand(forward: self.forward, turn: self.turn)
         disarm()
         lastMotionTime = Date()
     }
     func endDrive(gestureID: UUID? = nil) {
         guard gestureID == nil || gestureID == driveGestureID else { return }
         driveGestureID = nil
+        wheelCommand = .zero
         forward = 0; turn = 0; lastMotionTime = nil
     }
     func halt() { endDrive(); disarm() }
@@ -190,21 +247,28 @@ final class DemoSession {
         travel += forward * 0.025
         heading += turn * 0.018
     }
-    func cameraChanged() {
-        if !cameraAvailable { emergencyStop(); status = "Demo video lost. Movement and drop disabled." }
+    func resumePositioning() {
+        guard phase == .stopped, !roundInProgress, selection != nil else { return }
+        disableHandDriving(reason: "Positioning reset")
+        phase = .ready
+        status = "Positioning paused. Enable hand driving when ready."
     }
-    func emergencyStop() {
+    func cameraChanged() {
+        if !cameraAvailable { emergencyStop(reason: "Camera frames became stale"); status = "Video lost. Movement and drop disabled." }
+    }
+    func emergencyStop(reason: String = "Stop button selected") {
+        disableHandDriving(reason: reason)
         dropTask?.cancel()
         dropTask = nil
         halt()
         if isDriving { phase = .stopped }
         status = activeQuestion == nil ? "Stopped. No capsule dispensed." : "Stopped. Shared page still holds the assigned question."
-        log("STOP: local demo canceled")
+        log("STOP: \(reason)")
     }
     func drop(armedWith expectedID: UUID? = nil) {
         guard canDrop, let request = selection,
               expectedID == nil || expectedID == armingID else { return }
-        halt()
+        disableHandDriving(reason: "Capsule drop started")
         phase = .updating
         status = "Assigning \(request.playerName)’s question to the shared page…"
         log("URL update requested for \(request.playerName)")
@@ -240,7 +304,7 @@ final class DemoSession {
     }
     func finishRound() {
         guard !isBusy else { return }
-        halt()
+        disableHandDriving(reason: "Round finished")
         roundInProgress = false
         selectedQuestionIndex = nil
         isDriving = false

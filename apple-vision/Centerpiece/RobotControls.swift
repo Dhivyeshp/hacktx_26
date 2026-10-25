@@ -2,88 +2,78 @@ import SwiftUI
 
 private let controlMint = Color(red: 0.65, green: 0.94, blue: 0.79)
 
-/// Uses the system's indirect pinch-and-drag. GestureState resets on release AND cancellation.
-/// No camera access, hand skeleton, or immersive space is needed.
-struct RobotDriveControls: View {
+/// Shows ARKit's observed hand state. These are free-space gestures, not drags on a view.
+struct HandMotionControls: View {
     @Bindable var session: DemoSession
-    @GestureState private var translation: CGSize?
-    @State private var input = DriveInput.zero
+    @Bindable var hands: HandMotionController
+    var isLive: Bool
+    var connectionAvailable: Bool
+    var blockReason: String?
 
     var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle().fill(.white.opacity(0.055))
-                Circle().stroke(.white.opacity(0.16), lineWidth: 1)
-                Circle().stroke(controlMint.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
-                    .padding(25)
-                VStack {
-                    Image(systemName: "arrow.up").padding(.top, 9)
-                    Spacer()
-                    Text("RELEASE TO STOP").font(.system(size: 7, weight: .semibold)).tracking(1).padding(.bottom, 13)
-                }.foregroundStyle(.white.opacity(0.45))
-                HStack {
-                    Image(systemName: "arrow.turn.up.left").padding(.leading, 9)
-                    Spacer()
-                    Image(systemName: "arrow.turn.up.right").padding(.trailing, 9)
-                }.foregroundStyle(.white.opacity(0.45))
-                Circle()
-                    .fill(controlMint.gradient)
-                    .frame(width: 48, height: 48)
-                    .overlay(Image(systemName: "hand.pinch.fill").foregroundStyle(.black.opacity(0.7)))
-                    .shadow(color: controlMint.opacity(0.15), radius: 12)
-                    .offset(input.offset)
-            }
-            .font(.system(size: 13))
-            .frame(width: 172, height: 172)
-            .contentShape(Circle())
-            .hoverEffect(.highlight)
-            .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .local)
-                .updating($translation) { value, state, _ in state = value.translation })
-            .opacity(session.canDrive ? 1 : 0.4)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Drive robot")
-            .accessibilityHint("Look at the center and pinch and drag up to drive forward, left or right to turn. Release to stop.")
-            .onChange(of: translation) { previous, value in
-                guard let value else { input = .zero; session.endDrive(); return }
-                if previous == nil { session.beginDrive() }
-                input = DriveInput(translation: value)
-                session.updateDrive(input)
-            }
-            .onChange(of: session.canDrive) { _, available in
-                if !available { input = .zero; session.halt() }
-            }
-            .task(id: translation != nil) {
-                guard translation != nil, session.canDrive,
-                      let gestureID = session.beginDrive() else { return }
-                // Repeat the current command while the same system gesture is held,
-                // including when the hand is stationary. Never restart after interruption
-                // until a fresh gesture begins.
-                defer { session.endDrive(gestureID: gestureID) }
-                while !Task.isCancelled, session.driveGestureID == gestureID, session.canDrive {
-                    session.updateDrive(input, gestureID: gestureID)
-                    do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
-                }
-            }
-            .onDisappear { input = .zero; session.halt() }
-
-            HStack(spacing: 6) {
-                Circle().fill(session.isMoving ? controlMint : .white.opacity(0.4)).frame(width: 5, height: 5)
-                Text(session.motionLabel).font(.system(size: 11, weight: .medium))
-            }
+        VStack(spacing: 14) {
             HStack(spacing: 18) {
-                wheel("L", value: session.wheelCommand.left)
-                wheel("R", value: session.wheelCommand.right)
+                hand("Left", tracked: hands.leftTracked, pinched: hands.leftPinched)
+                hand("Right", tracked: hands.rightTracked, pinched: hands.rightPinched)
+            }.frame(maxWidth: .infinity)
+            HStack(spacing: 6) {
+                direction("Left", icon: "arrow.turn.up.left", value: .left)
+                direction("Straight", icon: "arrow.up", value: .straight)
+                direction("Right", icon: "arrow.turn.up.right", value: .right)
             }
-            Text("Pinch the puck. Drag up to drive, sideways to turn.")
-                .font(.system(size: 10)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }.frame(maxWidth: .infinity)
+            Text(hands.status).font(.system(size: 11, weight: .medium))
+                .foregroundStyle(session.handDrivingEnabled ? controlMint : .secondary)
+                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Pinch your thumb to your middle finger.").fontWeight(.semibold)
+                Text("Both hands → straight\nLeft only → left\nRight only → right\nRelease both → stop")
+                    .foregroundStyle(.secondary).lineSpacing(4)
+            }.font(.system(size: 11)).frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                session.enableHandDriving()
+            } label: {
+                Label(session.handDrivingEnabled ? "Hand driving enabled" : "Enable hand driving",
+                      systemImage: session.handDrivingEnabled ? "checkmark" : "hand.raised.fingers.spread.fill")
+                    .font(.system(size: 12, weight: .medium)).frame(maxWidth: .infinity).frame(height: 30)
+            }
+            // Enabling must not turn into Pause under the same gaze target:
+            // another selection while starting a gesture could disable driving.
+            // The separate Stop control remains available.
+            .disabled(session.handDrivingEnabled || !session.canDrive || !connectionAvailable)
+            if isLive, let blockReason {
+                Text("Wheels idle · \(blockReason)")
+                    .font(.system(size: 10)).foregroundStyle(.orange)
+                    .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            }
+            HStack {
+                Text(isLive ? "LIVE WHEELS" : "DEMO WHEELS").foregroundStyle(isLive ? controlMint : .secondary)
+                Spacer()
+                Text(String(format: "L %.2f  R %.2f", session.wheelCommand.left, session.wheelCommand.right))
+                    .monospacedDigit()
+            }.font(.system(size: 9, weight: .semibold))
+        }
     }
 
-    private func wheel(_ name: String, value: Float) -> some View {
-        HStack(spacing: 4) {
-            Text(name).foregroundStyle(.secondary)
-            Text(String(format: "%+.0f%%", value * 100)).monospacedDigit()
-        }.font(.system(size: 10))
+    private func hand(_ title: String, tracked: Bool, pinched: Bool) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: pinched ? "hand.pinch.fill" : "hand.raised.fill")
+                .font(.system(size: 28)).foregroundStyle(pinched ? controlMint : .white.opacity(tracked ? 0.8 : 0.25))
+            Text(title).font(.system(size: 10, weight: .semibold))
+            Text(tracked ? pinched ? "Pinched" : "Open" : "Not tracked")
+                .font(.system(size: 9)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func direction(_ title: String, icon: String, value: HandDriveIntent) -> some View {
+        let active = hands.intent == value
+        return VStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 14))
+            Text(title).font(.system(size: 9))
+        }
+        .foregroundStyle(active ? controlMint : .secondary)
+        .frame(maxWidth: .infinity).padding(.vertical, 8)
+        .background(active ? controlMint.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

@@ -27,8 +27,8 @@ struct RelayConfiguration {
     }
 }
 
-/// Receive-only client for the sibling relay's binary JPEG + JSON protocol.
-/// No robot commands are sent. Never log URLs, credentials, or raw server errors.
+/// Video and wheel-control client for the sibling relay.
+/// Never log URLs, credentials, or raw server errors.
 @MainActor @Observable
 final class RelayClient {
     private(set) var latestFrame: CGImage?
@@ -47,6 +47,98 @@ final class RelayClient {
     @ObservationIgnored private var lastFrameAt: Date?
     @ObservationIgnored private var connectionStarted = Date()
     @ObservationIgnored private var runID = UUID()
+    @ObservationIgnored private var writer: Task<Void, Never>?
+    @ObservationIgnored private var writerID: UUID?
+    @ObservationIgnored private var pendingDrive: (left: Float, right: Float)?
+    @ObservationIgnored private var pendingStop = false
+    @ObservationIgnored private var ownsMotion = false
+    private(set) var motionStatus = "Wheel control idle"
+
+    /// The first unmet precondition for sending wheel commands, or nil when ready.
+    /// A `pi` peer and recent video are both required, so a Pi that is not
+    /// streaming reads as "no video" rather than as a dropped command.
+    var controlBlockReason: String? {
+        if !isConnected { return "relay not connected" }
+        if !peers.contains("pi") { return "no pi client in room \(room)" }
+        if !hasFreshFrame { return "no Pi video in the last 3s" }
+        return nil
+    }
+    var canControlRobot: Bool { controlBlockReason == nil }
+
+    func sendDrive(left: Float, right: Float) {
+        guard canControlRobot, left.isFinite, right.isFinite else { stopRobot(); return }
+        let left = max(-0.6, min(0.6, left))
+        let right = max(-0.6, min(0.6, right))
+        if left == 0 && right == 0 { stopRobot(); return }
+        ownsMotion = true
+        pendingDrive = (left, right)
+        startWriter()
+    }
+
+    /// Report why no wheel command is going out. Ignored while this client owns
+    /// motion so a live command's own status is never overwritten.
+    func noteMotionIdle(_ reason: String?) {
+        guard let reason, !ownsMotion else { return }
+        motionStatus = "Wheels idle · \(reason)"
+    }
+
+    func stopRobot() {
+        pendingDrive = nil
+        guard ownsMotion else { return }
+        pendingStop = true
+        startWriter()
+    }
+
+    private func startWriter() {
+        guard writer == nil, let task = socket, isConnected else { return }
+        let id = runID
+        let writingID = UUID()
+        writerID = writingID
+        writer = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.writerID == writingID { self.writer = nil; self.writerID = nil }
+            }
+            do {
+                while !Task.isCancelled, self.runID == id {
+                    if self.pendingStop {
+                        self.pendingStop = false
+                        // Match both wheel-command semantics and the Pi's explicit stop.
+                        try await task.send(.string(Self.driveJSON(left: 0, right: 0)))
+                        try await task.send(.string("{\"type\":\"stop\",\"to\":\"pi\"}"))
+                        if self.pendingDrive == nil { self.ownsMotion = false }
+                        self.motionStatus = "Stop sent"
+                    } else if let drive = self.pendingDrive {
+                        self.pendingDrive = nil
+                        try await task.send(.string(Self.driveJSON(left: drive.left, right: drive.right)))
+                        self.motionStatus = "Wheel command sent"
+                    } else { return }
+                }
+            } catch {
+                guard self.runID == id, self.writerID == writingID else { return }
+                self.pendingDrive = nil
+                self.pendingStop = false
+                self.ownsMotion = false
+                let failure = error as NSError
+                print("[relay] Send failed: domain=\(failure.domain) code=\(failure.code) close=\(task.closeCode.rawValue)")
+                self.motionStatus = "Control connection failed"
+                task.cancel(with: .goingAway, reason: nil)
+            }
+        }
+    }
+
+    nonisolated static func driveJSON(left: Float, right: Float) -> String {
+        // Values are bounded and finite before reaching this function.
+        let message: [String: Any] = ["type": "drive", "to": "pi", "left": left, "right": right]
+        let data = try! JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func cancelWriter() {
+        writerID = nil
+        writer?.cancel(); writer = nil
+        pendingDrive = nil; pendingStop = false
+    }
 
     init(configuration: RelayConfiguration? = RelayConfiguration.bundled()) {
         self.configuration = configuration
@@ -70,6 +162,7 @@ final class RelayClient {
                 guard let self, self.runID == id else { return }
                 self.status = attempt == 0 ? "Connecting…" : "Reconnecting…"
                 self.connectionStarted = Date()
+                print("[relay] Connecting, attempt \(attempt + 1)")
                 let task = self.networking.webSocketTask(with: configuration.request())
                 task.maximumMessageSize = 4 * 1024 * 1024
                 self.socket = task
@@ -98,7 +191,12 @@ final class RelayClient {
                     }
                 } catch {
                     guard self.runID == id, !Task.isCancelled else { return }
-                    // Error descriptions may contain the authenticated request; expose only a generic status.
+                    // Log only numeric/domain diagnostics; error descriptions can include credentials.
+                    let failure = error as NSError
+                    print("[relay] Receive failed: domain=\(failure.domain) code=\(failure.code) close=\(task.closeCode.rawValue)")
+                    self.cancelWriter()
+                    self.ownsMotion = false
+                    self.motionStatus = "Control disconnected · enable hands again"
                     self.isConnected = false
                     self.hasFreshFrame = false
                     self.peers = []
@@ -117,6 +215,7 @@ final class RelayClient {
                 guard let self, self.runID == id else { return }
                 if let last = self.lastFrameAt, Date().timeIntervalSince(last) > 3 {
                     self.hasFreshFrame = false
+                    self.stopRobot()
                     if self.isConnected { self.status = "Video paused · no recent frames" }
                 }
                 if !self.isConnected, Date().timeIntervalSince(self.connectionStarted) > 20 {
@@ -126,28 +225,48 @@ final class RelayClient {
         }
     }
 
-    func disconnect() {
+    func disconnect(reason: String = "requested") {
+        print("[relay] Disconnect requested: \(reason)")
+        let oldSocket = socket
+        let shouldStop = ownsMotion
+        cancelWriter()
+        ownsMotion = false
         runID = UUID()
         receiver?.cancel(); receiver = nil
         watchdog?.cancel(); watchdog = nil
-        socket?.cancel(with: .goingAway, reason: nil); socket = nil
+        socket = nil
+        if let oldSocket, shouldStop {
+            // Send stop on the old socket before closing it. This callback cannot
+            // mutate a newly opened connection. Bound cleanup if the network hangs.
+            oldSocket.send(.string(Self.driveJSON(left: 0, right: 0))) { _ in
+                oldSocket.send(.string("{\"type\":\"stop\",\"to\":\"pi\"}")) { _ in
+                    oldSocket.cancel(with: .goingAway, reason: nil)
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                oldSocket.cancel(with: .goingAway, reason: nil)
+            }
+        } else { oldSocket?.cancel(with: .goingAway, reason: nil) }
         isConnected = false; hasFreshFrame = false
         lastFrameAt = nil; latestFrame = nil; peers = []
         status = isConfigured ? "Disconnected" : "Add RELAY_TOKEN to .env and rebuild"
     }
 
-    func reconnect() { disconnect(); connect() }
+    func reconnect() { disconnect(reason: "manual reconnect"); connect() }
 
     private func handle(_ text: String) {
         guard text.utf8.count <= 131_072, let data = text.data(using: .utf8),
               let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         switch message["type"] as? String {
         case "welcome":
+            print("[relay] Welcome received; socket connected")
             isConnected = true
             if !hasFreshFrame { status = "Connected · waiting for Pi video" }
             fallthrough
         case "presence":
             peers = (message["peers"] as? [[String: Any]])?.compactMap { $0["role"] as? String } ?? []
+            if !peers.contains("pi") { stopRobot() }
         case "error": status = "Relay rejected a message"
         default: break // Transcript/game message contracts are not defined by this view.
         }

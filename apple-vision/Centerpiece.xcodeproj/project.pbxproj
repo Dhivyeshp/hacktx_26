@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00000000000000000000001F /* HandMotionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001E /* HandMotionController.swift */; };
+		00000000000000000000001D /* HandMotionInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001C /* HandMotionInput.swift */; };
 		000000000000000000000014 /* CenterpieceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000A /* CenterpieceApp.swift */; };
 		000000000000000000000015 /* DemoSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000B /* DemoSession.swift */; };
 		000000000000000000000016 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000C /* DashboardView.swift */; };
@@ -16,6 +18,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		00000000000000000000001E /* HandMotionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandMotionController.swift; sourceTree = "<group>"; };
+		00000000000000000000001C /* HandMotionInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandMotionInput.swift; sourceTree = "<group>"; };
 		000000000000000000000006 /* Centerpiece.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Centerpiece.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		00000000000000000000000A /* CenterpieceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CenterpieceApp.swift; sourceTree = "<group>"; };
 		00000000000000000000000B /* DemoSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoSession.swift; sourceTree = "<group>"; };
@@ -53,6 +57,8 @@
 				00000000000000000000000D /* RelayClient.swift */,
 				00000000000000000000000E /* Assets.xcassets */,
 				00000000000000000000001A /* RobotControls.swift */,
+				00000000000000000000001E /* HandMotionController.swift */,
+				00000000000000000000001C /* HandMotionInput.swift */,
 			);
 			path = Centerpiece;
 			sourceTree = "<group>";
@@ -153,6 +159,8 @@
 				000000000000000000000016 /* DashboardView.swift in Sources */,
 				000000000000000000000017 /* RelayClient.swift in Sources */,
 				00000000000000000000001B /* RobotControls.swift in Sources */,
+				00000000000000000000001F /* HandMotionController.swift in Sources */,
+				00000000000000000000001D /* HandMotionInput.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -187,6 +195,7 @@
 				DEVELOPMENT_TEAM = 65WRU5S3K4;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "Use thumb-to-middle-finger pinches to drive the robot left, right, and forward.";
 				INFOPLIST_KEY_CFBundleDisplayName = Centerpiece;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -209,6 +218,7 @@
 				DEVELOPMENT_TEAM = 65WRU5S3K4;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "Use thumb-to-middle-finger pinches to drive the robot left, right, and forward.";
 				INFOPLIST_KEY_CFBundleDisplayName = Centerpiece;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

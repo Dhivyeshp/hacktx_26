@@ -62,6 +62,23 @@ struct DemoSessionChecks {
         input.arm(); input.cameraAvailable = false; input.cameraChanged()
         assert(!input.canDrop && !input.armed && input.beginDrive() == nil)
 
+        // Each driving gate must name itself, and the name must track canDrive.
+        let gates = DemoSession()
+        assert(gates.driveBlockReason == "pick a player and a question, then start positioning")
+        gates.selectPlayer(Player.samples[0]); gates.selectQuestion(0); gates.enterDriving()
+        assert(gates.driveBlockReason == nil && gates.canDrive)
+        gates.controlsSuspended = true
+        assert(gates.driveBlockReason == "a panel is open" && !gates.canDrive)
+        gates.controlsSuspended = false
+        gates.setSceneActive(false)
+        assert(gates.driveBlockReason == "the app is not active" && !gates.canDrive)
+        gates.setSceneActive(true)
+        gates.cameraAvailable = false
+        assert(gates.driveBlockReason == "camera frames are stale" && !gates.canDrive)
+        gates.cameraAvailable = true
+        gates.emergencyStop()
+        assert(gates.driveBlockReason == "phase is \(DropPhase.stopped.rawValue)" && !gates.canDrive)
+
         let failure = prepared()
         failure.failure = .questionUpdate
         failure.arm(); failure.drop()
@@ -92,6 +109,6 @@ struct DemoSessionChecks {
         try await Task.sleep(for: .milliseconds(2400))
         assert(success.phase == .failed && success.activeQuestion?.playerName == "Jordan")
         assert(success.roundInProgress && !success.canDrop)
-        print("PASS: selection, movement interlocks, watchdog, latched stop, gesture release/cancellation, old gesture isolation, video loss, URL failure, cancellation, ordering, duplicate drop, shared-page persistence, dispenser failure")
+        print("PASS: selection, named drive gates, movement interlocks, watchdog, latched stop, gesture release/cancellation, old gesture isolation, video loss, URL failure, cancellation, ordering, duplicate drop, shared-page persistence, dispenser failure")
     }
 }
