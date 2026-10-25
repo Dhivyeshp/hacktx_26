@@ -16,3 +16,25 @@ services:
         value: "24"
       - key: RELAY_TOKEN
         generateValue: true
+
+  # Solana payouts API + NFT metadata host. On-chain URIs point here, so keep the
+  # service name stable once players are registered.
+  - type: web
+    name: centerpiece-chain
+    runtime: node
+    plan: free
+    region: ohio
+    buildCommand: npm ci
+    startCommand: npm run -w @centerpiece/chain start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: SOLANA_CLUSTER
+        value: devnet
+      - key: SOLANA_RPC
+        sync: false # e.g. a Helius devnet URL; defaults to the public devnet RPC
+      - key: AUTHORITY_SECRET
+        sync: false # JSON array from the deployer keypair file (program admin)
+      - key: CHAIN_API_TOKEN
+        generateValue: true

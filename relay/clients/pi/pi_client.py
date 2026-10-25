@@ -16,6 +16,8 @@ import time
 import cv2
 from websockets.asyncio.client import connect
 
+from motor_server import WATCHDOG_S, Drivetrain, parse_command
+
 RELAY_URL = os.environ.get("RELAY_URL", "ws://localhost:8080/ws")
 RELAY_TOKEN = os.environ.get("RELAY_TOKEN", "")
 ROOM = os.environ.get("RELAY_ROOM", "table")
@@ -25,6 +27,7 @@ JPEG_QUALITY = int(os.environ.get("JPEG_QUALITY", "60"))
 FRAME_WIDTH = int(os.environ.get("FRAME_WIDTH", "640"))
 SERIAL_PORT = os.environ.get("ESP32_PORT", "")  # e.g. /dev/ttyUSB0; empty = no ESP32
 ROBOT_ID = os.environ.get("ROBOT_ID", "bot-1")
+DRIVE_MOTORS = os.environ.get("DRIVE_MOTORS", "1") == "1"  # drive/stop go to GPIO, not the ESP32
 
 # Commands the Pi forwards to the ESP32 untouched.
 ESP32_COMMANDS = {"drive", "stop", "deliver", "dispense", "screen"}
@@ -35,7 +38,15 @@ def open_serial():
         return None
     import serial  # pyserial
 
-    return serial.Serial(SERIAL_PORT, 115200, timeout=0)
+    s = serial.Serial()
+    s.port = SERIAL_PORT
+    s.baudrate = 115200
+    s.timeout = 0
+    # DTR and RTS drive the ESP32-C3's boot-mode and reset lines; keep them low.
+    s.dtr = False
+    s.rts = False
+    s.open()
+    return s
 
 
 def url_with_params():
@@ -65,47 +76,85 @@ async def send_telemetry(ws, esp32, state):
         if esp32 is not None:
             for line in esp32.readlines():
                 try:
-                    state.update(json.loads(line))
+                    status = json.loads(line)
                 except ValueError:
-                    pass
+                    continue
+                if isinstance(status, dict):
+                    status.pop("type", None)  # don't let it rename the telemetry message
+                    state.update(status)
         await ws.send(json.dumps({"type": "telemetry", "robot_id": ROBOT_ID, **state}))
         await asyncio.sleep(0.1)
 
 
-async def receive_commands(ws, esp32, state):
+async def receive_commands(ws, esp32, state, motors, last_cmd):
     async for message in ws:
         if isinstance(message, bytes):
             continue
-        msg = json.loads(message)
+        try:
+            msg = json.loads(message)
+        except ValueError:
+            continue
         kind = msg.get("type")
-        if kind in ESP32_COMMANDS:
+        if kind in ("drive", "stop") and motors is not None:
+            cmd = parse_command(message)
+            if cmd is None:
+                continue
+            last_cmd[0] = time.monotonic()
+            if cmd["type"] == "drive":
+                motors.drive(cmd["left"], cmd["right"])
+                state["state"] = "navigating"
+            else:
+                motors.stop()
+                state["state"] = "idle"
+            print("->motors", cmd)
+        elif kind in ESP32_COMMANDS:
             if esp32 is not None:
                 esp32.write((json.dumps(msg) + "\n").encode())
-            state["state"] = "navigating" if kind in ("drive", "deliver") else state.get("state", "idle")
             print("->esp32", msg)
         elif kind in ("welcome", "presence", "error"):
             print(kind, msg)
+
+
+async def motor_watchdog(motors, state, last_cmd):
+    # Same 300 ms dead-man stop as motor_server.py; also covers a dropped relay link.
+    while True:
+        if time.monotonic() - last_cmd[0] > WATCHDOG_S:
+            motors.stop()
+            if state.get("state") == "navigating":
+                state["state"] = "idle"
+        await asyncio.sleep(0.05)
 
 
 async def main():
     cam = cv2.VideoCapture(CAMERA_INDEX)
     esp32 = open_serial()
     state = {"state": "idle", "battery_v": None, "capsules_left": None}
+    motors = Drivetrain() if DRIVE_MOTORS else None  # L293D wired to the Pi GPIO
+    last_cmd = [time.monotonic()]
+    watchdog = asyncio.create_task(motor_watchdog(motors, state, last_cmd)) if motors else None
     backoff = 1
-    while True:
-        try:
-            async with connect(url_with_params(), max_size=None, ping_interval=20) as ws:
-                print("connected to relay")
-                backoff = 1
-                await asyncio.gather(
-                    send_frames(ws, cam),
-                    send_telemetry(ws, esp32, state),
-                    receive_commands(ws, esp32, state),
-                )
-        except Exception as exc:  # reconnect on any drop
-            print(f"relay connection lost ({exc!r}); retrying in {backoff}s")
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 15)
+    try:
+        while True:
+            try:
+                async with connect(url_with_params(), max_size=None, ping_interval=20) as ws:
+                    print("connected to relay")
+                    backoff = 1
+                    await asyncio.gather(
+                        send_frames(ws, cam),
+                        send_telemetry(ws, esp32, state),
+                        receive_commands(ws, esp32, state, motors, last_cmd),
+                    )
+            except Exception as exc:  # reconnect on any drop
+                if motors:
+                    motors.stop()
+                print(f"relay connection lost ({exc!r}); retrying in {backoff}s")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 15)
+    finally:
+        if watchdog:
+            watchdog.cancel()
+        if motors:
+            motors.close()
 
 
 if __name__ == "__main__":

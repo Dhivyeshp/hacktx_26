@@ -1,0 +1,28 @@
+{
+  "name": "@centerpiece/chain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript client and HTTP service for the centerpiece Anchor program",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "sync-idl": "cp ../target/idl/centerpiece.json src/idl/centerpiece.json && cp ../target/types/centerpiece.ts src/idl/centerpiece.ts",
+    "init": "tsx scripts/init-config.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "serve": "tsx src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@anchor-lang/core": "^1.2.1",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.98.4",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}
