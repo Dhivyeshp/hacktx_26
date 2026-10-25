@@ -49,24 +49,36 @@ struct DashboardView: View {
         .frame(width: 1280, height: 800)
         .clipped()
         .onAppear {
+            session.setSceneActive(scenePhase == .active)
             if session.selectedPlayer == nil { session.selectPlayer(Player.samples[0]) }
             if useLiveVideo { relay.connect() }
             updateVideoAvailability()
         }
         .onDisappear {
-            relay.disconnect(); session.emergencyStop(); session.controlsSuspended = false
+            session.emergencyStop(reason: "Dashboard closed"); relay.disconnect(reason: "dashboard disappeared"); session.controlsSuspended = false
         }
         .onChange(of: useLiveVideo) { _, live in
-            session.halt()
-            if live { relay.connect() } else { relay.disconnect() }
+            session.disableHandDriving(reason: "Camera mode changed")
+            if live { relay.connect() } else { relay.disconnect(reason: "demo camera selected") }
             updateVideoAvailability()
         }
         .onChange(of: videoAvailable) { _, _ in updateVideoAvailability() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
+            print("[relay] Scene phase: \(phase)")
+            session.setSceneActive(phase == .active)
+            switch phase {
+            case .active:
                 if useLiveVideo { relay.connect() }
-            } else {
-                session.emergencyStop(); relay.disconnect()
+            case .inactive:
+                // Pause commands immediately without canceling the tracking session.
+                // Returning to active requires neutral hands, never a held gesture.
+                experience.hands.requireNeutralReset(model: session)
+                relay.stopRobot()
+            case .background:
+                session.emergencyStop(reason: "App moved to background")
+                relay.disconnect(reason: "scene backgrounded")
+            @unknown default:
+                session.emergencyStop(reason: "Unknown scene state"); relay.stopRobot()
             }
         }
         .task {
@@ -252,11 +264,13 @@ struct DashboardView: View {
                 Text("FOR \(session.selectedPlayer?.name.uppercased() ?? "PLAYER")")
                     .font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(mint)
                 Spacer()
-                Text("Demo controls").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(useLiveVideo ? "Live wheel control" : "Demo movement").font(.system(size: 10)).foregroundStyle(.secondary)
             }
             Text(session.selection?.question ?? "Selected question").font(.system(size: 14, weight: .medium))
             if session.phase == .ready {
-                RobotDriveControls(session: session)
+                HandMotionControls(session: session, hands: experience.hands, isLive: useLiveVideo,
+                                   connectionAvailable: !useLiveVideo || relay.canControlRobot,
+                                   blockReason: useLiveVideo ? (relay.controlBlockReason ?? session.driveBlockReason) : nil)
                 Divider()
                 if session.armed {
                     CapsuleDropControl(session: session)
@@ -267,7 +281,7 @@ struct DashboardView: View {
                             .frame(maxWidth: .infinity).frame(height: 30)
                     }
                     .disabled(!session.canArm)
-                    Text("Release the drive pinch before arming.")
+                    Text("Release both drive pinches before arming.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 HStack {
@@ -283,9 +297,16 @@ struct DashboardView: View {
                 HStack { ProgressView(); Text(session.phase.rawValue).font(.caption) }
                 Button("Stop", role: .destructive) { session.emergencyStop() }
             } else {
+                if session.phase == .stopped && !session.roundInProgress {
+                    Button("Resume positioning") { session.resumePositioning() }
+                }
                 Button("Finish round") { session.finishRound() }
             }
             Text(session.status).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(session.handDrivingStatus)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(session.handDrivingEnabled ? mint : .orange)
+                .fixedSize(horizontal: false, vertical: true)
             Divider()
             HStack {
                 if !session.roundInProgress {
@@ -309,12 +330,14 @@ struct DashboardView: View {
             if useLiveVideo {
                 Text("Room: \(relay.room) · JPEG frames: \(relay.framesReceived)").font(.caption.monospacedDigit())
                 Text("Peers: \(relay.peers.isEmpty ? "none" : relay.peers.joined(separator: ", "))").font(.caption)
+                Text("Wheel control: \(relay.controlBlockReason ?? "ready")").font(.caption)
+                    .foregroundStyle(relay.controlBlockReason == nil ? mint : .orange)
                 Button("Reconnect") { relay.reconnect() }.disabled(!relay.isConfigured)
             } else {
                 Toggle("Demo video available", isOn: $experience.demoVideoAvailable)
             }
             Divider()
-            Text("Robot commands and transcript remain simulated.").font(.caption).foregroundStyle(.secondary)
+            Text("Wheel commands are live in relay mode. Capsule actions and transcript are simulated.").font(.caption).foregroundStyle(.secondary)
             Picker("Next demo drop failure", selection: $session.failure) {
                 ForEach(DemoFailure.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.disabled(session.isBusy)
