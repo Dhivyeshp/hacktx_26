@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Session, DB } from "./db";
 import type { ConversationState, TranscriptSegment } from "../shared/types";
 import { save } from "./db";
+import { recordSegments } from "./tigerdb";
 
 export function conversationState(s: Session): ConversationState {
   return (
@@ -42,15 +43,19 @@ export function appendTranscript(
         ? at >= round.assignedAt && (!round.endedAt || at <= round.endedAt)
         : round.status === "assigned",
     );
-  c.segments.push({
+  const segment: TranscriptSegment = {
     ...input,
     at,
     sequence: c.sequence,
     origin,
     ...(round ? { roundId: round.id } : {}),
-  });
+  };
+  c.segments.push(segment);
   // Bounded in-session text. Old transcript is not retained indefinitely.
   c.segments = c.segments.slice(-400);
+  // Parallel time-series copy. Fire and forget, and optional: a TigerDB
+  // outage must never fail or delay the transcript the players depend on.
+  recordSegments(s.id, [segment]);
   return true;
 }
 export function pendingConversation(s: Session) {

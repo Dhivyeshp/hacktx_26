@@ -4,7 +4,11 @@ import simd
 /// Measures both the base and middle finger bends, without thumb or fingertip
 /// positions. Angles make the classifier independent of hand size and rotation.
 enum HandGripGeometry {
-    static let fistThreshold: Float = 0.55
+    /// A finger counts as closed only when clearly curled. Raised from 0.55
+    /// after testing: a relaxed or half-cupped hand crossed the old threshold
+    /// and read as a fist. The wide gap to `openThreshold` is deliberate
+    /// hysteresis, so a hand hovering near the boundary does not flicker.
+    static let fistThreshold: Float = 0.72
     static let openThreshold: Float = 0.25
     struct Joint {
         var position: SIMD3<Float>
@@ -75,6 +79,10 @@ enum HandDriveIntent: String, Equatable {
 /// Pure input logic so the directional mapping can be checked without a headset.
 struct HandMotionInput {
     static let trackingTimeout: TimeInterval = 0.25
+    /// How long a new fist combination must hold before the wheels move.
+    /// Longer than the original 0.16 so a hand passing through a curl on its
+    /// way somewhere else does not start the robot.
+    static let settleDelay: TimeInterval = 0.30
     private struct Sample {
         var curl: Float?
         var timestamp: TimeInterval = -.infinity
@@ -170,7 +178,7 @@ struct HandMotionInput {
             // Stop while a new combination settles; do not sweep through a turn
             // as the wearer closes both hands a few frames apart.
             intent = .stop
-        } else if now - candidateSince >= 0.16 {
+        } else if now - candidateSince >= Self.settleDelay {
             intent = next
         }
         return intent

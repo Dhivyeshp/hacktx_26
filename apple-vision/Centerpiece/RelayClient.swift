@@ -141,6 +141,32 @@ final class RelayClient {
         }
     }
 
+    /// Update Tina's badge screen. One-off and best effort: a failed badge
+    /// update must never interfere with wheel commands, so it does not go
+    /// through the drive writer and a failure is not surfaced as a fault.
+    func sendScreen(face: String? = nil, text: String? = nil) {
+        guard isConnected, let task = socket else { return }
+        let message = Self.screenJSON(face: face, text: text)
+        Task { [weak self] in
+            do { try await task.send(.string(message)) }
+            catch {
+                guard self != nil else { return }
+                let failure = error as NSError
+                print("[relay] Screen update failed: domain=\(failure.domain) code=\(failure.code)")
+            }
+        }
+    }
+
+    nonisolated static func screenJSON(face: String?, text: String?) -> String {
+        var message: [String: Any] = ["type": "screen", "to": "pi"]
+        if let face { message["face"] = face }
+        // The badge caption is short. Longer prompt titles are truncated here
+        // rather than relying on the firmware to do something sensible.
+        if let text { message["text"] = String(text.prefix(48)) }
+        let data = try! JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
     nonisolated static func driveJSON(left: Float, right: Float) -> String {
         // Values are bounded and finite before reaching this function.
         let message: [String: Any] = ["type": "drive", "to": "pi", "left": left, "right": right]

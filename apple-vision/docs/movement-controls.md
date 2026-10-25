@@ -1,6 +1,6 @@
 # Using Vision Pro movement controls
 
-Use loose fists to drive the robot through the relay. The Vision Pro recognizes
+Make a firm fist with either hand to drive the robot through the relay. The Vision Pro recognizes
 your hands and sends wheel speeds; the Pi receives those commands and forwards
 them over serial when an ESP32 port is configured.
 
@@ -70,11 +70,16 @@ camera feed needed by the app.
 ## 3. Enable movement on the headset
 
 1. Enter the immersive view and select live Pi video. Confirm the picture updates.
-2. Select a player and question, then choose **Ready to drive**.
+2. Generate a set of prompts and choose one. Assigning it on the server is what
+   unlocks driving: until a prompt is on the table the hand cards read
+   `Wheels idle · no prompt is assigned yet`. Clearing it stops driving again.
 3. Select **Enable hand driving** and allow hand-tracking permission.
 4. Close any settings panel and keep both hands visible to the headset.
 5. Open both hands until the panel says it is ready.
-6. Make a loose fist with either or both hands and hold the pose steady.
+6. Make a firm fist with either or both hands and hold the pose steady for about a third of a second.
+
+Without a Destina server configured the app runs in demo mode, where the
+mocked table still gates driving the same way but no robot commands are sent.
 
 No gaze target or on-screen drag is needed while driving. Keep the other hand
 visible and open when making a turn.
@@ -92,8 +97,10 @@ Wheel values are normalized commands, not meters per second. Direction labels
 assume positive wheel speeds move the wheels forward. Reverse is not mapped to
 a hand gesture.
 
-A new direction settles for about 160 ms before movement starts. Opening both
-hands stops movement immediately in the app. Actual delivery still depends on
+A new direction settles for about 300 ms before movement starts. Opening both
+hands stops movement immediately in the app. Recognition is deliberately
+strict: a loose or half-cupped hand does not count, so close your fingers
+firmly and hold the pose still. Actual delivery still depends on
 the network and motor controller.
 
 Use the separate **Stop** button to disable hand driving. To recover from a
@@ -137,7 +144,7 @@ for stale commands because a network failure can prevent delivery of a stop.
 | What you see | Meaning / action |
 | --- | --- |
 | `Open` / `Fist` | The current recognized pose. Check both cards against your hands. |
-| `base`, `mid`, `bend` | Base-joint, middle-joint and combined bend scores; these are not confidence percentages. |
+| `base`, `mid`, `bend` | Base-joint, middle-joint and combined bend scores; these are not confidence percentages. A finger counts as closed at 0.72 and reopens at 0.25. |
 | `estimated` | Fingers using estimated joint positions. On visionOS 26+, these can contribute while the whole hand remains tracked. |
 | `Open both hands to get ready` | Hold both hands clearly open until ready, then make the gesture. |
 | `Finger pose unavailable` / `Finger poses disagree` | There is insufficient usable finger evidence. Show both hands and reopen them. |
@@ -146,6 +153,9 @@ for stale commands because a network failure can prevent delivery of a stop.
 | Listener only shows `presence` | The connection is visible, but no movement command has reached the listener. Check the headset's hand cards, status and wheel values. |
 | Vision Pro disappears from presence | The headset connection left the room. Check whether the app was backgrounded or immersion exited; hand-tracking loss alone does not close the socket. |
 | Commands arrive but wheels do not move | Check `ESP32_PORT`, serial connection and motor firmware. Listener output proves receipt by the listener, not motor actuation. |
+
+If the cards say `Open` while you believe you are making a fist, close your
+fingers further and check that `bend` passes 0.72.
 
 Whole-hand loss or a tracking gap of 250 ms requires opening both hands again.
 Shorter finger-pose dropouts also stop the wheels, but can recover after a stable

@@ -64,7 +64,7 @@ struct DemoSessionChecks {
 
         // Each driving gate must name itself, and the name must track canDrive.
         let gates = DemoSession()
-        assert(gates.driveBlockReason == "pick a player and a question, then start positioning")
+        assert(gates.driveBlockReason == "no prompt is assigned yet")
         gates.selectPlayer(Player.samples[0]); gates.selectQuestion(0); gates.enterDriving()
         assert(gates.driveBlockReason == nil && gates.canDrive)
         gates.controlsSuspended = true
@@ -78,6 +78,22 @@ struct DemoSessionChecks {
         gates.cameraAvailable = true
         gates.emergencyStop()
         assert(gates.driveBlockReason == "phase is \(DropPhase.stopped.rawValue)" && !gates.canDrive)
+
+        // A prompt assigned on the server unlocks driving on its own, and
+        // clearing it must stop the wheels rather than leave them live
+        // against a target that no longer exists.
+        let assigned = DemoSession()
+        assert(assigned.driveBlockReason == "no prompt is assigned yet")
+        assigned.setAssignedPrompt(
+            QuestionSelection(playerID: 0, playerName: "Maya", questionIndex: 1, question: "The quiet trade")
+        )
+        assert(assigned.driveBlockReason == nil && assigned.canDrive)
+        assert(assigned.selection?.playerName == "Maya")
+        assigned.enableHandDriving()
+        assert(assigned.handDrivingEnabled)
+        assigned.setAssignedPrompt(nil)
+        assert(!assigned.handDrivingEnabled, "Clearing the prompt must stop hand driving")
+        assert(assigned.driveBlockReason == "no prompt is assigned yet" && !assigned.canDrive)
 
         let failure = prepared()
         failure.failure = .questionUpdate

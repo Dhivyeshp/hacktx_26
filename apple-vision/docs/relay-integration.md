@@ -48,11 +48,11 @@ Motion starts only after explicit Enable hand driving, fresh tracking, an open-h
 
 The extended localhost fixture decodes masked client WebSocket frames and verifies actual outbound wheel fields/routing, a canceled 1000-intent burst, and the final stop before disconnect. `Tests/HandMotionChecks.swift` checks neutral reset, stable combinations, wheel direction, hysteresis, immediate release, tracking loss and invalid samples. These checks do not move the real robot.
 
-Driving uses loose fists rather than thumb/fingertip contact. The recognizer
+Driving uses firm fists rather than thumb/fingertip contact. The recognizer
 measures both base and middle bends on the index, middle and ring fingers,
 using the stronger bend per finger. At least two fingers must agree; one missing or noisy finger does not
 interrupt a held fist. Thumb and fingertip positions are unused. Curl scores use
-separate close/open thresholds (0.55/0.25), and a new direction settles for 160ms.
+separate close/open thresholds (0.72/0.25), and a new direction settles for 300ms.
 Opening both hands stops immediately.
 
 Insufficient finger-bend evidence stops wheels immediately but preserves a

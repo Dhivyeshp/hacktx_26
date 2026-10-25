@@ -116,20 +116,46 @@ final class DemoSession {
     private var dropTask: Task<Void, Never>?
     private var lastMotionTime: Date?
 
+    /// Set from the server's assigned round. When present it replaces the
+    /// local demo pick, so driving is gated on a real prompt being on the
+    /// table rather than on a mock selection.
+    private(set) var assignedPrompt: QuestionSelection?
+
     var selectedPlayer: Player? { Player.samples.first { $0.id == selectedPlayerID } }
     var selection: QuestionSelection? {
+        if let assignedPrompt { return assignedPrompt }
         guard let player = selectedPlayer, let index = selectedQuestionIndex,
               player.questions.indices.contains(index) else { return nil }
         return QuestionSelection(playerID: player.id, playerName: player.name,
                                  questionIndex: index, question: player.questions[index])
+    }
+
+    /// Mirror the server's assigned prompt. Clearing it stops the wheels,
+    /// because there is no longer anyone to deliver to.
+    func setAssignedPrompt(_ prompt: QuestionSelection?) {
+        guard prompt != assignedPrompt else { return }
+        assignedPrompt = prompt
+        if prompt == nil {
+            disableHandDriving(reason: "No prompt is assigned")
+            isDriving = false
+            roundInProgress = false
+            phase = .ready
+            status = "Choose the next prompt."
+        } else {
+            halt()
+            isDriving = true
+            roundInProgress = false
+            phase = .ready
+            status = "Position Tina for \(prompt!.playerName), stop, then arm the drop."
+        }
     }
     var isBusy: Bool { phase == .updating || phase == .dispensing }
     var isMoving: Bool { abs(forward) > 0.01 || abs(turn) > 0.01 }
     /// The first unmet precondition for driving, or nil when driving is allowed.
     /// Named so the headset and the console can say why the wheels are idle.
     var driveBlockReason: String? {
-        if !isDriving { return "pick a player and a question, then start positioning" }
-        if selection == nil { return "no question selected" }
+        if !isDriving { return "no prompt is assigned yet" }
+        if selection == nil { return "no prompt is assigned yet" }
         if phase != .ready { return "phase is \(phase.rawValue)" }
         if !cameraAvailable { return "camera frames are stale" }
         if controlsSuspended { return "a panel is open" }

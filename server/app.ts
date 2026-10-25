@@ -35,6 +35,7 @@ import {
   conversationInput,
   reserveSessionRequest,
 } from "./conversation";
+import { readSegments, speakerActivity, tigerEnabled } from "./tigerdb";
 import { createAudioBridge } from "./audio";
 import { createRewardEngine } from "./rewards";
 import type { RoomEvent, Source } from "../shared/types";
@@ -792,6 +793,15 @@ export function createApp(db = openDb()) {
     "/api/control/rooms/:code",
     wrap((req, res) => res.json(controlSnapshot(room(req)))),
   );
+  // The full Game Master feed over bearer auth. controlSnapshot is deliberately
+  // thin; a headset Game Master needs the same view the browser at /gm has.
+  app.get(
+    "/api/control/rooms/:code/questions",
+    wrap((req, res) => {
+      const s = room(req);
+      res.json(questionsSnapshot(s, generating.has(s.id), true, db));
+    }),
+  );
 
   app.post(
     [
@@ -1169,6 +1179,38 @@ export function createApp(db = openDb()) {
       const changed = appendTranscript(s, input, "test");
       if (changed) touch(s, "transcript.appended");
       res.json({ ok: true, duplicate: !changed });
+    }),
+  );
+  // Incremental transcript reads for a polling client. Served from TigerDB
+  // when it is configured, and from the in-session copy otherwise, so the
+  // headset behaves the same either way.
+  app.get(
+    ["/api/questions/transcript", "/api/control/rooms/:code/transcript"],
+    wrap(async (req, res) => {
+      const s = room(req);
+      const since = Number(req.query.since);
+      const sinceAt =
+        Number.isSafeInteger(since) && since > 0 ? since : undefined;
+      const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 400);
+      const c = conversationState(s);
+      const stored = tigerEnabled()
+        ? await readSegments(s.id, { since: sinceAt, limit })
+        : undefined;
+      const segments = (
+        stored ||
+        c.segments
+          .filter((segment) => !sinceAt || segment.at > sinceAt)
+          .slice(-limit)
+      ).map((segment) => ({
+        ...segment,
+        speakerId:
+          c.speakerLinks[segment.speakerLabel || ""] || segment.speakerId,
+      }));
+      res.json({
+        source: stored ? "tigerdb" : "session",
+        segments,
+        speakers: stored ? await speakerActivity(s.id) : [],
+      });
     }),
   );
   app.post(

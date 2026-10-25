@@ -139,7 +139,7 @@ final class HandMotionController {
                     stopOwnedMotion(model)
                     status = leftFist || rightFist
                         ? "Hold your fist steady…"
-                        : "Ready · close a loose fist to drive"
+                        : "Ready · make a firm fist to drive"
                 } else {
                     if ownedGesture == nil { ownedGesture = model.beginDrive() }
                     if let ownedGesture {
