@@ -21,6 +21,7 @@ Plug the badge into the Pi over USB-C. It shows up as `/dev/ttyACM0` on the Pi a
 - **Plain text:** a line that isn't JSON becomes the caption.
 - **Acks:** the badge replies to each command with `{"screen_face":...,"screen_text":...,"screen_qr":...}`, which the Pi folds into its telemetry.
 - **Start button:** cycles through the faces.
+- **A button:** shows the join QR code for 15 seconds, full size, then returns to the face. Pressing it again restarts the timer, and Start dismisses it early. The link is `kJoinUrl` in `src/main.cpp`. Free ngrok URLs change when ngrok restarts, so update it and reflash when that happens.
 
 Opening the serial port resets the badge, and the firmware prints `{"screen_ready":true}` about half a second later. Wait for that line before sending anything. `relay/clients/pi/screen_test.py` does this for you and works from a laptop or the Pi:
 
