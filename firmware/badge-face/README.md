@@ -2,9 +2,17 @@
 
 Firmware that turns the Hack the North 2026 badge into the robot's face: black eyes and mouth on a white screen that blink, glance around, breathe, and hop when the expression changes. It can also swap the face for a QR code.
 
+It runs standalone. Nothing needs to be connected beyond USB power.
+
+- **Expressions:** the face switches to a new one by itself every 4 to 9 seconds. Friendly faces come up most often, with the occasional sad, angry or sleepy moment. The mix is `kAutoWeights` in `src/main.cpp`.
+- **A button:** toggles the join QR code, `https://destina.ngrok.app/join/0AEDDD` (`kJoinUrl`). Press once to show it and again to go back to the face. It also returns to the face by itself after 10 seconds.
+- **Start button:** steps through the faces by hand. The autopilot waits 8 seconds before taking over again.
+
 The badge is an ESP32-C3-MINI-1 with a 320x240 ST7789 screen and native USB serial ([hardware docs](https://github.com/hackthenorth/badge-firmware/blob/main/docs/CUSTOM-FIRMWARE-HAL.md)). Flashing this replaces the stock badge firmware.
 
-## Talking to it
+## Talking to it (optional)
+
+The serial commands below still work, and the autopilot pauses for 8 seconds after each one. The robot no longer uses them.
 
 Plug the badge into the Pi over USB-C. It shows up as `/dev/ttyACM0` on the Pi and `/dev/cu.usbmodem*` on a Mac. Send one JSON object per line. `relay/clients/pi/pi_client.py` already forwards `screen` messages from the relay when run with `ESP32_PORT=/dev/ttyACM0`.
 
@@ -20,8 +28,6 @@ Plug the badge into the Pi over USB-C. It shows up as `/dev/ttyACM0` on the Pi a
 - **QR code:** `qr: "<url>"` replaces the face with a QR code for that URL. `qr: true` re-shows the last URL and `qr: false` goes back to the face. Because the URL arrives in the message, the app link can change without reflashing.
 - **Plain text:** a line that isn't JSON becomes the caption.
 - **Acks:** the badge replies to each command with `{"screen_face":...,"screen_text":...,"screen_qr":...}`, which the Pi folds into its telemetry.
-- **Start button:** cycles through the faces.
-- **A button:** shows the join QR code for 15 seconds, full size, then returns to the face. Pressing it again restarts the timer, and Start dismisses it early. The link is `kJoinUrl` in `src/main.cpp` (currently `https://destina.ngrok.app/join/0AEDDD`). Change it there and reflash if the join link moves.
 
 Opening the serial port resets the badge, and the firmware prints `{"screen_ready":true}` about half a second later. Wait for that line before sending anything. `relay/clients/pi/screen_test.py` does this for you and works from a laptop or the Pi:
 

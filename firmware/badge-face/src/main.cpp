@@ -1,7 +1,12 @@
 // Animated robot face for the Hack the North 2026 badge.
 //
-// The Pi forwards relay commands as one JSON object per line over USB serial
-// (relay/clients/pi/pi_client.py). This firmware handles the `screen` ones:
+// Standalone: the face wanders through its expressions on its own (see
+// updateAutopilot). The A button toggles the join QR code (kJoinUrl), which
+// also goes away by itself after 10 seconds. The Start button steps through
+// the faces by hand.
+//
+// It still accepts commands as one JSON object per line over USB serial, e.g.
+// from relay/clients/pi/pi_client.py, and pauses the autopilot briefly after one:
 //
 //   {"type":"screen","face":"happy","text":"Maya, you're up!"}
 //   {"type":"screen","qr":"https://example.com/join","text":"Scan to join"}
@@ -13,8 +18,6 @@
 // Other command types are ignored. A plain (non-JSON) line is shown as the
 // caption, handy for testing from a terminal. Each handled command is acked
 // with {"screen_face":...,"screen_text":...,"screen_qr":...}.
-// The Start button cycles through the faces. The A button shows the join QR
-// code (kJoinUrl) for 15 seconds.
 //
 // NFC: {"type":"nfc_read"} and {"type":"nfc_write","url":...}, see handleNfc().
 
@@ -38,7 +41,7 @@ static constexpr int PIN_HC165_LOAD = 20;
 static constexpr int PIN_HC165_CLK = 21;
 
 static const char* const kJoinUrl = "https://destina.ngrok.app/join/0AEDDD";
-static constexpr uint32_t kJoinQrMs = 15000;
+static constexpr uint32_t kJoinQrMs = 10000;
 
 class BadgeLcd : public lgfx::LGFX_Device {
   lgfx::Panel_ST7789 panel_;
@@ -122,6 +125,12 @@ static const NamedFace kFaces[] = {
 static constexpr int kFaceCount = sizeof(kFaces) / sizeof(kFaces[0]);
 static constexpr int NEUTRAL = 0, HAPPY = 1, SURPRISED = 6;
 
+// How often the autopilot picks each face (same order as kFaces): mostly
+// friendly, with the occasional sad, angry or sleepy moment.
+static const uint8_t kAutoWeights[] = {4, 4, 2, 3, 2, 2, 2, 2, 1, 1, 1};
+static_assert(sizeof(kAutoWeights) == kFaceCount, "one weight per face");
+static constexpr uint32_t kAutoHoldMs = 8000;  // after a button press or serial command
+
 static int faceIndex = NEUTRAL;
 static Face cur = kFaces[NEUTRAL].face;
 static String caption;
@@ -143,6 +152,7 @@ static uint32_t reactAt = 0;            // last expression change, drives the bo
 static uint32_t lastCommandAt = 0;
 static int fidgetFace = -1;             // brief expression while idling in neutral
 static uint32_t fidgetUntil = 0, nextFidget = 8000;
+static uint32_t nextAutoFace = 5000;
 
 static uint32_t randBetween(uint32_t lo, uint32_t hi) { return lo + esp_random() % (hi - lo); }
 static float randSigned() { return (int32_t)(esp_random() % 2001) / 1000.0f - 1.0f; }
@@ -347,9 +357,15 @@ static void pollButtons() {
     ack();
   }
   if (pressedEdge(readShiftButtons() & 0x01, aWas, aAt)) {
-    qrUrl = kJoinUrl;
-    qrShown = qrDirty = true;
-    qrHideAt = millis() + kJoinQrMs;
+    if (qrShown) {  // second press: back to the face
+      qrShown = false;
+      qrHideAt = 0;
+      blinkStart = reactAt = millis();
+    } else {
+      qrUrl = kJoinUrl;
+      qrShown = qrDirty = true;
+      qrHideAt = millis() + kJoinQrMs;
+    }
     ack();
   }
 }
@@ -376,6 +392,27 @@ static void updateGaze(uint32_t now) {
   }
   gazeX += (constrain(cur.lookX + glanceX, -1.0f, 1.0f) - gazeX) * 0.2f;
   gazeY += (constrain(cur.lookY + glanceY, -1.0f, 1.0f) - gazeY) * 0.2f;
+}
+
+// Every few seconds, switch to a different face picked by kAutoWeights.
+// Neutral lingers a little longer so its fidgets get a chance to play.
+static void updateAutopilot(uint32_t now) {
+  if (qrShown || now - lastCommandAt < kAutoHoldMs || (int32_t)(now - nextAutoFace) < 0) return;
+  int total = 0;
+  for (int i = 0; i < kFaceCount; i++) {
+    if (i != faceIndex) total += kAutoWeights[i];
+  }
+  int pick = esp_random() % total, next = NEUTRAL;
+  for (int i = 0; i < kFaceCount; i++) {
+    if (i == faceIndex) continue;
+    if (pick < kAutoWeights[i]) {
+      next = i;
+      break;
+    }
+    pick -= kAutoWeights[i];
+  }
+  setFace(next);
+  nextAutoFace = now + (next == NEUTRAL ? randBetween(7000, 12000) : randBetween(4000, 9000));
 }
 
 // While nobody has said anything for a while, neutral occasionally slips into
@@ -587,6 +624,7 @@ void loop() {
   pollSerial();
   pollButtons();
   uint32_t now = millis();
+  updateAutopilot(now);
   if (qrShown && qrHideAt && (int32_t)(now - qrHideAt) >= 0) {
     qrShown = false;
     qrHideAt = 0;
