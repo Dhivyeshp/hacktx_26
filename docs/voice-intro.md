@@ -49,3 +49,8 @@ stop and cleanup, auth and size limits, source grounding, approval boundaries,
 private transcript visibility, duplicate-request reuse, model failure and a reset
 during an in-flight extraction. Frontend verification must also cover denied mic
 permissions and real speech recognition on the intended iOS and Android browsers.
+
+The current onboarding saves extracted suggestions automatically into the top
+interest list. Players can remove incorrect interests immediately. The separate
+interest-save footer has been removed; voice/text extraction remains an explicit
+user action after reviewing the introduction text.

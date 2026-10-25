@@ -1891,3 +1891,78 @@ test("reset removes game data and credentials, preserves GM access and spending 
     200,
   );
 });
+
+test("every joined player needs a nonzero interest list before generation or assignment", async () => {
+  const made = await request(
+    "/control/rooms",
+    { name: "Readiness rehearsal" },
+    "",
+    true,
+  );
+  const code = made.body.room.code;
+  const members = [];
+  for (const name of ["Ready one", "Ready two", "Ready three"]) {
+    const member = await request("/join", { code, name });
+    members.push(member);
+    await request(
+      "/interests",
+      { labels: ["Pottery"], approvedIds: [] },
+      member.cookie,
+    );
+  }
+  const path = "/control/rooms/" + code;
+  const options = await request(
+    path + "/recommendations",
+    { origin: "library" },
+    "",
+    true,
+  );
+  assert.equal(options.status, 200);
+  const recId = options.body.recommendations[0].id;
+  const late = await request("/join", { code, name: "Still onboarding" });
+  assert.equal(
+    (await request(path + "/recommendations", { origin: "library" }, "", true))
+      .status,
+    409,
+  );
+  assert.equal(
+    (await request(path + "/assign", { recommendationId: recId }, "", true))
+      .status,
+    409,
+  );
+  await request(
+    "/interests",
+    { labels: ["Hiking"], approvedIds: [] },
+    late.cookie,
+  );
+  const fresh = await request(
+    path + "/recommendations",
+    { origin: "library" },
+    "",
+    true,
+  );
+  assert.equal(fresh.status, 200);
+  const saved = await request(
+    "/interests",
+    { labels: [], approvedIds: [] },
+    members[0].cookie,
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.room.readyCount, 3);
+  assert.equal(
+    (await request(path + "/recommendations", { origin: "library" }, "", true))
+      .status,
+    409,
+  );
+  assert.equal(
+    (
+      await request(
+        path + "/assign",
+        { recommendationId: fresh.body.recommendations[0].id },
+        "",
+        true,
+      )
+    ).status,
+    409,
+  );
+});

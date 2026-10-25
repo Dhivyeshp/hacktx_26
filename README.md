@@ -261,3 +261,16 @@ extraction prevents that request from restoring deleted data. Intro text stays o
 of the GM/player roster and is removed by profile reset or session closure. Device
 microphone permission and speech quality still need verification on actual iOS and
 Android phones. See [voice intro details](docs/voice-intro.md).
+
+### Automatic interest saving
+
+Profile onboarding is ordered Your interests, In your own words, Your Instagram
+on every screen. Add an interest with Enter, a comma, the Add button or by leaving
+the field. Changes save immediately with a saving/saved state and retry on failure;
+there is no sticky Save footer. Extracted suggestions populate the top list and
+save automatically; players can remove anything that does not fit. The voice
+intro still requires reviewing its text and explicitly requesting extraction.
+
+GM readiness updates from persisted interests. Every joined player needs at least
+one interest, with at least three players total, before generation or assignment.
+Removing a player's last interest blocks the next generation and start again.

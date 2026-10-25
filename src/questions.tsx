@@ -321,6 +321,8 @@ export function Questions() {
                 className="primary"
                 disabled={
                   busy ||
+                  feed.room.readyCount < 3 ||
+                  feed.room.readyCount !== feed.room.playerCount ||
                   (editing === rec.id && instructions.trim().length < 15)
                 }
                 onClick={async () => {
@@ -842,7 +844,11 @@ export function Questions() {
                         <button
                           className="primary"
                           disabled={
-                            busy || !!feed.activeQuestion || feed.preparing
+                            busy ||
+                            !!feed.activeQuestion ||
+                            feed.preparing ||
+                            feed.room.readyCount < 3 ||
+                            feed.room.readyCount !== feed.room.playerCount
                           }
                           onClick={() => generate("conversation")}
                         >

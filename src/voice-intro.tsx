@@ -136,7 +136,7 @@ export function VoiceIntro({
                   ? "Listening. Stop when you’re ready."
                   : message ||
                     (text && text.trim() === savedText
-                      ? "Introduction saved. Review your interests before saving them."
+                      ? "Introduction saved. Your interests update above."
                       : "")}
             </p>
             <button

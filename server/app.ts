@@ -912,6 +912,16 @@ export function createApp(db = openDb()) {
         return res.status(409).json({
           error: "Clear the current question before assigning another.",
         });
+      if (
+        s.players.length < 3 ||
+        s.players.some((p) => !p.interests.some((i) => i.approved))
+      )
+        return res
+          .status(409)
+          .json({
+            error:
+              "Every player needs at least one interest before the game can start.",
+          });
       const rec = s.recommendations.find(
         (r) => r.id === input.recommendationId,
       );
@@ -957,7 +967,12 @@ export function createApp(db = openDb()) {
           p.participation++;
       touch(s, "question.cleared");
       res.json(controlSnapshot(s));
-      if (s.conversation?.automatic && enoughConversation(s)) {
+      if (
+        s.conversation?.automatic &&
+        enoughConversation(s) &&
+        s.players.length >= 3 &&
+        s.players.every((p) => p.interests.some((i) => i.approved))
+      ) {
         const invoke = async () => {
           if (generating.has(s.id)) return;
           generating.add(s.id);
@@ -1012,12 +1027,10 @@ export function createApp(db = openDb()) {
         generating.has(s.id) ||
         s.players.some((p) => analyzingProfiles.has(p.id))
       )
-        return res
-          .status(409)
-          .json({
-            error:
-              "Wait for the current preparation to finish, then reset the game.",
-          });
+        return res.status(409).json({
+          error:
+            "Wait for the current preparation to finish, then reset the game.",
+        });
       audio.stop(s.id);
       const fresh: Session = {
         id: s.id,

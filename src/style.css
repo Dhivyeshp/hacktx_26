@@ -2680,3 +2680,106 @@ label small,
   color: var(--text-muted);
   line-height: 1.7;
 }
+
+/* Profile onboarding always reads interests, introduction, then Instagram. */
+.profile-page .profile-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 760px;
+  margin-inline: auto;
+}
+.profile-page .profile-grid > .panel {
+  width: 100%;
+  order: 0;
+}
+.profile-page .profile-grid .interest-panel,
+.profile-page .profile-grid .source-panel {
+  background: var(--bg-raised);
+  color: var(--text);
+  --ink: var(--text);
+  --ink-muted: var(--text-muted);
+  --muted: var(--text-muted);
+  --border: var(--line);
+  --line-light: var(--line);
+  --focus: var(--tan);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.profile-page .profile-grid .intro-panel {
+  background: var(--cream);
+  color: var(--ink);
+  --text: var(--ink);
+  --text-muted: var(--ink-muted);
+  --muted: var(--ink-muted);
+  --bg: var(--cream);
+  --bg-raised: var(--cream-2);
+  --line: var(--line-light);
+  --border: var(--line-light);
+  --focus: var(--tan-deep);
+  border: 1px solid var(--line-light);
+  border-radius: 8px;
+  color-scheme: light;
+}
+.profile-page .profile-grid .intro-panel textarea {
+  background: transparent;
+}
+.interest-autosave-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 20px 0 8px;
+}
+.interest-autosave-status > span:last-child {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.interest-add {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+.interest-add-controls {
+  display: flex;
+  gap: 10px;
+}
+.interest-add-controls input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 12px;
+  min-height: 48px;
+  border-radius: 4px;
+}
+.interest-add small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.profile-page .profile-action {
+  display: none;
+}
+@media (max-width: 760px) {
+  .profile-page:not(.read-only) {
+    padding-bottom: 28px;
+  }
+  .profile-page .profile-grid {
+    gap: 16px;
+  }
+  .interest-add-controls .secondary {
+    padding-inline: 18px;
+  }
+}
+.profile-page .source-panel .notice {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--line);
+}
+.profile-page .interest-panel .secondary:hover,
+.profile-page .source-panel .secondary:hover { background: var(--bg); }
